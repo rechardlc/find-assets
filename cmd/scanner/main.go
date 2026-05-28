@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/find-assets/scanner/internal/exporter"
+	"github.com/find-assets/scanner/internal/model"
 	"github.com/find-assets/scanner/internal/server"
 	"github.com/find-assets/scanner/internal/service"
 	"github.com/find-assets/scanner/internal/source"
@@ -24,19 +25,31 @@ import (
 
 func main() {
 	var (
-		mode      = flag.String("mode", "", "选股模式：day | week （CLI 模式必填）")
+		mode      = flag.String("mode", "day", "选股模式：day | week （CLI 模式必填）")
 		workers   = flag.Int("workers", 100, "最大并发数")
 		barsLimit = flag.Int("bars", 600, "拉取日线根数")
-		cohesion  = flag.Float64("cohesion", 0.015, "[day 策略] 均线粘合度阈值")
+		rangeArg  = flag.Float64("range", 1.5, "[day 策略] 均线粘合度阈值，百分比单位，默认 1.5 (=1.5%)")
+		cohesion  = flag.Float64("cohesion", 0, "[day 策略] 粘合度阈值（小数，已废弃，建议使用 -range）")
 		exportArg = flag.String("export", "console", "导出格式列表，逗号分隔：console,json,md")
 		outDir    = flag.String("out", "./output", "导出文件输出目录")
 		serve     = flag.Bool("serve", false, "以 HTTP 服务模式运行")
 		addr      = flag.String("addr", ":8080", "HTTP 监听地址")
+		srcSpec    = flag.String("source", "auto", "数据源：auto | em | sina | tencent | file:./path.json，可逗号串联做回退（如 file:./stocks.json,em）")
+		stocksFile = flag.String("stocks-file", "", "本地股票清单文件（JSON 或 CSV）；指定后会作为首选源，K 线仍走在线接口")
+		saveList   = flag.String("save-list", "", "扫描成功后把清单保存为 JSON 文件（用于离线缓存）")
 	)
 	flag.Parse()
 
-	src := source.NewEastMoney()
-	svc := service.New(src)
+	spec := *srcSpec
+	if *stocksFile != "" {
+		spec = "file:" + *stocksFile + "," + spec
+	}
+	composite, err := source.NewComposite(spec)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "数据源配置错误:", err)
+		os.Exit(2)
+	}
+	svc := service.New(composite)
 
 	if *serve {
 		runServer(svc, *addr)
@@ -49,27 +62,42 @@ func main() {
 		os.Exit(2)
 	}
 
-	runCLI(svc, *mode, *workers, *barsLimit, *cohesion, *exportArg, *outDir)
+	runCLI(svc, *mode, *workers, *barsLimit, *rangeArg, *cohesion, *exportArg, *outDir, *saveList)
 }
 
 // ---------------- CLI 模式 ----------------
 
-func runCLI(svc *service.ScanService, mode string, workers, bars int, cohesion float64, exportArg, outDir string) {
+func runCLI(svc *service.ScanService, mode string, workers, bars int, rangePct, cohesion float64, exportArg, outDir, saveList string) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	fmt.Printf("★ 选股器启动，当前运行模式: %s 线策略 ★\n", mode)
+	if mode == "day" {
+		if cohesion > 0 {
+			fmt.Printf("   均线粘合度阈值: %.4f (cohesion)\n", cohesion)
+		} else {
+			fmt.Printf("   均线粘合度阈值: %.2f%% (range)\n", rangePct)
+		}
+	}
 	fmt.Println("1. 正在拉取全市场股票清单...")
 
 	var totalStocks int
+	var fetchedStocks []model.Stock
 	var nextProgress int64 = 1000
 
 	rep, err := svc.Run(ctx, service.Params{
 		Mode: mode, Workers: workers, BarsLimit: bars,
-		Cohesion: cohesion, TaskID: uuid.NewString(),
-		OnStocks: func(total int) {
+		Range: rangePct, Cohesion: cohesion, TaskID: uuid.NewString(),
+		OnStocks: func(total int, stocks []model.Stock) {
 			totalStocks = total
-			fmt.Printf("成功获取到 %d 只股票，开始并发扫描...\n", total)
+			fetchedStocks = stocks
+			active := ""
+			if c, ok := svc.Source().(*source.Composite); ok {
+				if n := c.ActiveName(); n != "" {
+					active = "（数据源: " + n + "）"
+				}
+			}
+			fmt.Printf("成功获取到 %d 只股票%s，开始并发扫描...\n", total, active)
 		},
 		Progress: func(done, total int64) {
 			threshold := atomic.LoadInt64(&nextProgress)
@@ -81,9 +109,17 @@ func runCLI(svc *service.ScanService, mode string, workers, bars int, cohesion f
 		},
 	})
 	if err != nil {
-		log.Fatalf("扫描失败: %v", err)
+		log.Fatalf("扫描失败: %v\n提示：可使用 -stocks-file=./stocks.json 加载本地缓存，或先在网络好的时候用 -save-list=./stocks.json 缓存一次。", err)
 	}
 	_ = totalStocks
+
+	if saveList != "" && len(fetchedStocks) > 0 {
+		if err := source.SaveStocks(saveList, fetchedStocks); err != nil {
+			fmt.Fprintf(os.Stderr, "保存清单失败: %v\n", err)
+		} else {
+			fmt.Printf("已保存清单到 %s（%d 只）\n", saveList, len(fetchedStocks))
+		}
+	}
 
 	formats := splitFormats(exportArg)
 	if err := dispatchExports(rep, formats, outDir, mode); err != nil {

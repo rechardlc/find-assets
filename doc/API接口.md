@@ -57,7 +57,7 @@ POST /api/v1/scans
 {
   "mode": "day",
   "workers": 100,
-  "cohesion": 0.015,
+  "range": 1.5,
   "bars_limit": 600
 }
 ```
@@ -66,7 +66,8 @@ POST /api/v1/scans
 |------|------|------|------|
 | mode | string | 是 | `day` 或 `week` |
 | workers | int | 否 | 并发数，默认 100 |
-| cohesion | float | 否 | 日线粘合度阈值，默认 0.015 |
+| range | float | 否 | 日线粘合度阈值（百分比，1.5 = 1.5%），默认 1.5；优先于 `cohesion` |
+| cohesion | float | 否 | 日线粘合度阈值（小数，0.015 = 1.5%），向后兼容字段，仅在未传 `range` 时生效 |
 | bars_limit | int | 否 | 拉取日线根数，默认 600 |
 
 **响应**（200）：
@@ -207,10 +208,15 @@ GET /api/v1/scans/:id/export?format=md
 ### cURL
 
 ```bash
-# 同步扫描
+# 同步扫描（默认粘合度 1.5%）
 curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
   -d '{"mode":"day"}'
+
+# 自定义粘合度为 1.2%
+curl -X POST http://localhost:8080/api/v1/scans \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"day","range":1.2}'
 
 # 异步扫描 + 轮询
 TASK=$(curl -s -X POST http://localhost:8080/api/v1/scans/async \

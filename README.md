@@ -25,8 +25,11 @@ go build -ldflags="-s -w" -o 选股器.exe ./cmd/scanner
 ### CLI 模式
 
 ```powershell
-# 日线策略
+# 日线策略（默认粘合度 1.5%）
 .\选股器.exe -mode=day
+
+# 日线策略，自定义粘合度阈值为 1.2%
+.\选股器.exe -mode=day -range=1.2
 
 # 周线策略，并导出 JSON + Markdown
 .\选股器.exe -mode=week -export=json,md -out=./output
@@ -51,7 +54,8 @@ curl -X POST http://localhost:8080/api/v1/scans \
 | `-mode` | — | 策略模式：`day` / `week`（CLI 必填） |
 | `-workers` | 100 | 最大并发数 |
 | `-bars` | 600 | 拉取日线根数 |
-| `-cohesion` | 0.015 | 日线策略粘合度阈值（1.5%） |
+| `-range` | 1.5 | 日线策略粘合度阈值（百分比，1.5 = 1.5%） |
+| `-cohesion` | 0 | 日线策略粘合度阈值（小数形式，已废弃，建议使用 `-range`） |
 | `-export` | console | 导出格式：`console,json,md` |
 | `-out` | ./output | 文件导出目录 |
 | `-serve` | false | 启动 HTTP 服务 |
