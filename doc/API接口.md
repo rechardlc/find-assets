@@ -57,7 +57,8 @@ POST /api/v1/scans
 {
   "mode": "day",
   "workers": 100,
-  "range": 1.5,
+  "range": 2,
+  "volume": 20,
   "bars_limit": 600
 }
 ```
@@ -66,8 +67,8 @@ POST /api/v1/scans
 |------|------|------|------|
 | mode | string | 是 | `day` 或 `week` |
 | workers | int | 否 | 并发数，默认 100 |
-| range | float | 否 | 日线粘合度阈值（百分比，1.5 = 1.5%），默认 1.5；优先于 `cohesion` |
-| cohesion | float | 否 | 日线粘合度阈值（小数，0.015 = 1.5%），向后兼容字段，仅在未传 `range` 时生效 |
+| range | float | 否 | 日线粘合度阈值（百分比，2 = 2%），默认 2 |
+| volume | float | 否 | 日线放量阈值（百分比，20 = 较前一日成交量增加 20%），默认 20 |
 | bars_limit | int | 否 | 拉取日线根数，默认 600 |
 
 **响应**（200）：
@@ -92,7 +93,10 @@ POST /api/v1/scans
         "date": "2026-05-28",
         "close": 1680.5,
         "ema5": 1679.1,
-        "cohesion": 0.0082
+        "range": 0.82,
+        "volume": 120000,
+        "prev_volume": 100000,
+        "volume_increase": 20
       }
     }
   ]
@@ -208,7 +212,7 @@ GET /api/v1/scans/:id/export?format=md
 ### cURL
 
 ```bash
-# 同步扫描（默认粘合度 1.5%）
+# 同步扫描（默认粘合度 2%，放量 20%）
 curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
   -d '{"mode":"day"}'
@@ -217,6 +221,11 @@ curl -X POST http://localhost:8080/api/v1/scans \
 curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
   -d '{"mode":"day","range":1.2}'
+
+# 自定义放量阈值为较前一日高 20%
+curl -X POST http://localhost:8080/api/v1/scans \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"day","volume":20}'
 
 # 异步扫描 + 轮询
 TASK=$(curl -s -X POST http://localhost:8080/api/v1/scans/async \

@@ -9,12 +9,13 @@ import (
 
 // Day 实现"日线一箭穿心"策略。
 type Day struct {
-	MinBars  int     // 上市天数要求（按交易日近似），默认 125
-	Cohesion float64 // 粘合度阈值，默认 0.015
+	MinBars int     // 上市天数要求（按交易日近似），默认 125
+	Range   float64 // 粘合度阈值（百分比），默认 2
+	Volume  float64 // 放量阈值（百分比），默认 20，表示较前一日成交量至少增加 20%
 }
 
 func NewDay() *Day {
-	return &Day{MinBars: 125, Cohesion: 0.015}
+	return &Day{MinBars: 125, Range: 2, Volume: 20}
 }
 
 func (d *Day) Mode() string  { return "day" }
@@ -46,8 +47,8 @@ func (d *Day) Match(stock model.Stock, daily []model.Kline) (model.Result, bool)
 	if minE <= 0 {
 		return model.Result{}, false
 	}
-	cohesion := (maxE - minE) / minE
-	if cohesion > d.Cohesion {
+	emaRange := (maxE - minE) / minE
+	if emaRange > d.Range/100 {
 		return model.Result{}, false
 	}
 
@@ -58,21 +59,32 @@ func (d *Day) Match(stock model.Stock, daily []model.Kline) (model.Result, bool)
 	if !(k.High > maxE && k.Low < minE) { // 一箭穿心
 		return model.Result{}, false
 	}
+	prev := daily[last-1]
+	if prev.Volume <= 0 {
+		return model.Result{}, false
+	}
+	volumeIncrease := (float64(k.Volume) - float64(prev.Volume)) / float64(prev.Volume) * 100
+	if volumeIncrease < d.Volume {
+		return model.Result{}, false
+	}
 
 	return model.Result{
 		Code:   stock.Code,
 		Name:   stock.Name,
-		Tag:    "[日线穿心突破]",
-		Metric: fmt.Sprintf("粘合度: %.2f%%", cohesion*100),
+		Tag:    "一箭穿心",
+		Metric: fmt.Sprintf("粘合度: %.2f%%, 放量: %.2f%%", emaRange*100, volumeIncrease),
 		Snapshot: model.Snapshot{
-			Date:     k.Date.Format("2006-01-02"),
-			Close:    k.Close,
-			EMA5:     ema5[last],
-			EMA10:    ema10[last],
-			EMA30:    ema30[last],
-			EMA60:    ema60[last],
-			EMA120:   ema120[last],
-			Cohesion: cohesion,
+			Date:           k.Date.Format("2006-01-02"),
+			Close:          k.Close,
+			EMA5:           ema5[last],
+			EMA10:          ema10[last],
+			EMA30:          ema30[last],
+			EMA60:          ema60[last],
+			EMA120:         ema120[last],
+			Range:          emaRange * 100,
+			Volume:         k.Volume,
+			PrevVolume:     prev.Volume,
+			VolumeIncrease: volumeIncrease,
 		},
 	}, true
 }

@@ -20,7 +20,7 @@ func NewRouter(svc *service.ScanService) (*gin.Engine, *ScanHandler) {
 
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"name":    "find-assets scanner",
+			"name":    "find-assets",
 			"version": "v1.0.0",
 			"docs":    "/api/v1",
 		})

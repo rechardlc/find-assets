@@ -41,10 +41,10 @@ func (h *ScanHandler) Shutdown() { h.bgCancel() }
 type ScanRequest struct {
 	Mode    string `json:"mode" binding:"required,oneof=day week"`
 	Workers int    `json:"workers,omitempty"`
-	// Range 日线策略均线粘合度阈值，百分比单位（例如 1.5 表示 1.5%）。优先于 Cohesion。
+	// Range 日线策略均线粘合度阈值，百分比单位（例如 2 表示 2%）。
 	Range float64 `json:"range,omitempty"`
-	// Cohesion 同 Range 的小数形式（例如 0.015）。仅在 Range 未填时生效。
-	Cohesion  float64 `json:"cohesion,omitempty"`
+	// Volume 日线策略放量阈值，百分比单位（例如 10 表示较前一日成交量增加 10%）。
+	Volume    float64 `json:"volume,omitempty"`
 	BarsLimit int     `json:"bars_limit,omitempty"`
 }
 
@@ -66,7 +66,7 @@ func (h *ScanHandler) SyncScan(c *gin.Context) {
 		Workers:   req.Workers,
 		BarsLimit: req.BarsLimit,
 		Range:     req.Range,
-		Cohesion:  req.Cohesion,
+		Volume:    req.Volume,
 		TaskID:    uuid.NewString(),
 	})
 	if err != nil {
@@ -101,7 +101,7 @@ func (h *ScanHandler) AsyncScan(c *gin.Context) {
 			Workers:   req.Workers,
 			BarsLimit: req.BarsLimit,
 			Range:     req.Range,
-			Cohesion:  req.Cohesion,
+			Volume:    req.Volume,
 			TaskID:    task.ID,
 			OnStocks: func(total int, _ []model.Stock) {
 				atomic.StoreInt64(&task.Total, int64(total))

@@ -10,7 +10,7 @@ import (
 // 构造 N 天的等值收盘价 + 最后一天一根穿心阳线，验证 Day 策略命中。
 func TestDay_Match_HitArrowThroughHeart(t *testing.T) {
 	d := NewDay()
-	d.Cohesion = 0.05 // 放宽阈值，便于构造
+	d.Range = 5 // 放宽阈值至 5%，便于构造
 
 	// 130 天的价格全部贴在 10.0 附近，让 5 条 EMA 高度粘合
 	const days = 130
@@ -18,14 +18,22 @@ func TestDay_Match_HitArrowThroughHeart(t *testing.T) {
 	daily := make([]model.Kline, 0, days+1)
 	for i := 0; i < days; i++ {
 		daily = append(daily, model.Kline{
-			Date: start.AddDate(0, 0, i),
-			Open: 10, Close: 10, High: 10.05, Low: 9.95,
+			Date:   start.AddDate(0, 0, i),
+			Open:   10,
+			Close:  10,
+			High:   10.05,
+			Low:    9.95,
+			Volume: 1000,
 		})
 	}
 	// 最后一天画一根穿心阳线：开盘 9.5，最高 11.0，最低 9.0，收盘 10.8
 	daily = append(daily, model.Kline{
-		Date: start.AddDate(0, 0, days),
-		Open: 9.5, Close: 10.8, High: 11.0, Low: 9.0,
+		Date:   start.AddDate(0, 0, days),
+		Open:   9.5,
+		Close:  10.8,
+		High:   11.0,
+		Low:    9.0,
+		Volume: 1200,
 	})
 
 	stk := model.Stock{Code: "600000", Name: "示例银行"}
@@ -33,8 +41,40 @@ func TestDay_Match_HitArrowThroughHeart(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected match")
 	}
-	if r.Code != "600000" || r.Snapshot.Cohesion < 0 {
+	if r.Code != "600000" || r.Snapshot.Range < 0 {
 		t.Fatalf("unexpected result: %+v", r)
+	}
+}
+
+// 一箭穿心当天必须放量，默认至少比前一日成交量高 10%。
+func TestDay_Match_RequiresVolumeIncrease(t *testing.T) {
+	d := NewDay()
+	d.Range = 5 // 放宽阈值至 5%，便于构造
+
+	const days = 130
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	daily := make([]model.Kline, 0, days+1)
+	for i := 0; i < days; i++ {
+		daily = append(daily, model.Kline{
+			Date:   start.AddDate(0, 0, i),
+			Open:   10,
+			Close:  10,
+			High:   10.05,
+			Low:    9.95,
+			Volume: 1000,
+		})
+	}
+	daily = append(daily, model.Kline{
+		Date:   start.AddDate(0, 0, days),
+		Open:   9.5,
+		Close:  10.8,
+		High:   11.0,
+		Low:    9.0,
+		Volume: 1099,
+	})
+
+	if _, ok := d.Match(model.Stock{Code: "600000", Name: "示例银行"}, daily); ok {
+		t.Fatal("should not match when arrow-through-heart day is not 10% above previous volume")
 	}
 }
 

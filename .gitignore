@@ -8,7 +8,7 @@
 *.so
 *.dylib
 /scanner
-/选股器.exe
+/find-assets.exe
 
 # Build output
 /dist/

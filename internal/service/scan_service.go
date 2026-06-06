@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/find-assets/scanner/internal/exporter"
@@ -33,23 +34,13 @@ type Params struct {
 	Mode      string
 	Workers   int
 	BarsLimit int
-	// Range 日线策略均线粘合度阈值（百分比，例如 1.5 表示 1.5%）；> 0 时优先生效。
+	// Range 日线策略均线粘合度阈值（百分比，例如 2 表示 2%）。
 	Range float64
-	// Cohesion 日线策略均线粘合度阈值（小数，例如 0.015 表示 1.5%）；
-	// 仅当 Range <= 0 时生效，用于向后兼容。
-	Cohesion float64
+	// Volume 日线策略放量阈值（百分比，例如 10 表示较前一日增加 10%）。
+	Volume   float64
 	TaskID   string
 	Progress scanner.ProgressFn
 	OnStocks func(total int, stocks []model.Stock) // 拉取到清单时回调
-}
-
-// effectiveCohesion 返回最终生效的粘合度阈值（小数形式）。
-// Range > 0 时按百分比换算，否则回退到 Cohesion。
-func (p Params) effectiveCohesion() float64 {
-	if p.Range > 0 {
-		return p.Range / 100
-	}
-	return p.Cohesion
 }
 
 // Run 执行扫描并返回标准化报告。
@@ -58,10 +49,11 @@ func (s *ScanService) Run(ctx context.Context, p Params) (*exporter.Report, erro
 	if strat == nil {
 		return nil, errors.New("未知策略模式: " + p.Mode)
 	}
-	if d, ok := strat.(*strategy.Day); ok {
-		if c := p.effectiveCohesion(); c > 0 {
-			d.Cohesion = c
-		}
+	if d, ok := strat.(*strategy.Day); ok && p.Range > 0 {
+		d.Range = p.Range
+	}
+	if d, ok := strat.(*strategy.Day); ok && p.Volume > 0 {
+		d.Volume = p.Volume
 	}
 
 	startedAt := time.Now()
@@ -79,6 +71,13 @@ func (s *ScanService) Run(ctx context.Context, p Params) (*exporter.Report, erro
 		Progress:  p.Progress,
 	})
 	finishedAt := time.Now()
+
+	// day 策略：按均线粘合度从小到大排序（越小越粘合，越靠前）。
+	if strat.Mode() == "day" {
+		sort.SliceStable(results, func(i, j int) bool {
+			return results[i].Snapshot.Range < results[j].Snapshot.Range
+		})
+	}
 
 	rep := &exporter.Report{
 		TaskID:     p.TaskID,

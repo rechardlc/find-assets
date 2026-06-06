@@ -25,15 +25,15 @@ import (
 
 func main() {
 	var (
-		mode      = flag.String("mode", "day", "选股模式：day | week （CLI 模式必填）")
-		workers   = flag.Int("workers", 100, "最大并发数")
-		barsLimit = flag.Int("bars", 600, "拉取日线根数")
-		rangeArg  = flag.Float64("range", 1.5, "[day 策略] 均线粘合度阈值，百分比单位，默认 1.5 (=1.5%)")
-		cohesion  = flag.Float64("cohesion", 0, "[day 策略] 粘合度阈值（小数，已废弃，建议使用 -range）")
-		exportArg = flag.String("export", "console", "导出格式列表，逗号分隔：console,json,md")
-		outDir    = flag.String("out", "./output", "导出文件输出目录")
-		serve     = flag.Bool("serve", false, "以 HTTP 服务模式运行")
-		addr      = flag.String("addr", ":8080", "HTTP 监听地址")
+		mode       = flag.String("mode", "day", "选股模式：day | week （CLI 模式必填）")
+		workers    = flag.Int("workers", 100, "最大并发数")
+		barsLimit  = flag.Int("bars", 600, "拉取日线根数")
+		rangeArg   = flag.Float64("range", 2, "[day 策略] 均线粘合度阈值，百分比单位，默认 2 (=2%)")
+		volumeArg  = flag.Float64("volume", 20, "[day 策略] 放量阈值，百分比单位，默认 20 (=较前一日成交量增加 20%)")
+		exportArg  = flag.String("export", "console", "导出格式列表，逗号分隔：console,json,md")
+		outDir     = flag.String("out", "./output", "导出文件输出目录")
+		serve      = flag.Bool("serve", false, "以 HTTP 服务模式运行")
+		addr       = flag.String("addr", ":8080", "HTTP 监听地址")
 		srcSpec    = flag.String("source", "auto", "数据源：auto | em | sina | tencent | file:./path.json，可逗号串联做回退（如 file:./stocks.json,em）")
 		stocksFile = flag.String("stocks-file", "", "本地股票清单文件（JSON 或 CSV）；指定后会作为首选源，K 线仍走在线接口")
 		saveList   = flag.String("save-list", "", "扫描成功后把清单保存为 JSON 文件（用于离线缓存）")
@@ -62,22 +62,19 @@ func main() {
 		os.Exit(2)
 	}
 
-	runCLI(svc, *mode, *workers, *barsLimit, *rangeArg, *cohesion, *exportArg, *outDir, *saveList)
+	runCLI(svc, *mode, *workers, *barsLimit, *rangeArg, *volumeArg, *exportArg, *outDir, *saveList)
 }
 
 // ---------------- CLI 模式 ----------------
 
-func runCLI(svc *service.ScanService, mode string, workers, bars int, rangePct, cohesion float64, exportArg, outDir, saveList string) {
+func runCLI(svc *service.ScanService, mode string, workers, bars int, rangePct, volumePct float64, exportArg, outDir, saveList string) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	fmt.Printf("★ 选股器启动，当前运行模式: %s 线策略 ★\n", mode)
+	fmt.Printf("★ find-assets 启动，当前运行模式: %s 线策略 ★\n", mode)
 	if mode == "day" {
-		if cohesion > 0 {
-			fmt.Printf("   均线粘合度阈值: %.4f (cohesion)\n", cohesion)
-		} else {
-			fmt.Printf("   均线粘合度阈值: %.2f%% (range)\n", rangePct)
-		}
+		fmt.Printf("   均线粘合度阈值: %.2f%% (range)\n", rangePct)
+		fmt.Printf("   放量阈值: %.2f%% (volume)\n", volumePct)
 	}
 	fmt.Println("1. 正在拉取全市场股票清单...")
 
@@ -87,7 +84,7 @@ func runCLI(svc *service.ScanService, mode string, workers, bars int, rangePct, 
 
 	rep, err := svc.Run(ctx, service.Params{
 		Mode: mode, Workers: workers, BarsLimit: bars,
-		Range: rangePct, Cohesion: cohesion, TaskID: uuid.NewString(),
+		Range: rangePct, Volume: volumePct, TaskID: uuid.NewString(),
 		OnStocks: func(total int, stocks []model.Stock) {
 			totalStocks = total
 			fetchedStocks = stocks

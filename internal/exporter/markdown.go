@@ -25,19 +25,10 @@ func (Markdown) Write(w io.Writer, r *Report) error {
 
 	fmt.Fprintln(w, "## 命中清单")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "| # | 代码 | 名称 | 标签 | 指标 | 日期 | 收盘 | EMA5 | EMA10 | EMA30 | EMA60 | EMA120 |")
-	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|---|---|---|")
+	fmt.Fprintln(w, "| # | 代码 | 名称 |")
+	fmt.Fprintln(w, "|---|---|---|")
 	for i, it := range r.Results {
-		s := it.Snapshot
-		ema120 := "-"
-		if s.EMA120 > 0 {
-			ema120 = fmt.Sprintf("%.2f", s.EMA120)
-		}
-		fmt.Fprintf(w,
-			"| %d | `%s` | %s | %s | %s | %s | %.2f | %.2f | %.2f | %.2f | %.2f | %s |\n",
-			i+1, it.Code, it.Name, it.Tag, it.Metric,
-			s.Date, s.Close, s.EMA5, s.EMA10, s.EMA30, s.EMA60, ema120,
-		)
+		fmt.Fprintf(w, "| %d | `%s` | %s |\n", i+1, it.Code, it.Name)
 	}
 	return nil
 }

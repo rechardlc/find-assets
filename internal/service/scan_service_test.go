@@ -1,31 +1,21 @@
 package service
 
-import "testing"
+import (
+	"testing"
 
-func TestEffectiveCohesion_PrefersRange(t *testing.T) {
-	p := Params{Range: 1.5, Cohesion: 0.02}
-	if got := p.effectiveCohesion(); got != 0.015 {
-		t.Fatalf("want 0.015 from range, got %v", got)
+	"github.com/find-assets/scanner/internal/strategy"
+)
+
+func TestNewDay_DefaultRange(t *testing.T) {
+	d := strategy.NewDay()
+	if d.Range != 2 {
+		t.Fatalf("want default range 2, got %v", d.Range)
 	}
 }
 
-func TestEffectiveCohesion_FallbackToCohesion(t *testing.T) {
-	p := Params{Range: 0, Cohesion: 0.02}
-	if got := p.effectiveCohesion(); got != 0.02 {
-		t.Fatalf("want 0.02 from cohesion, got %v", got)
-	}
-}
-
-func TestEffectiveCohesion_NegativeRangeFallsBack(t *testing.T) {
-	p := Params{Range: -1, Cohesion: 0.01}
-	if got := p.effectiveCohesion(); got != 0.01 {
-		t.Fatalf("want 0.01 fallback, got %v", got)
-	}
-}
-
-func TestEffectiveCohesion_BothZero(t *testing.T) {
-	p := Params{}
-	if got := p.effectiveCohesion(); got != 0 {
-		t.Fatalf("want 0, got %v", got)
+func TestNewDay_DefaultVolume(t *testing.T) {
+	d := strategy.NewDay()
+	if d.Volume != 20 {
+		t.Fatalf("want default volume 20, got %v", d.Volume)
 	}
 }
