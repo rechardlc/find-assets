@@ -7,25 +7,29 @@ import (
 	"github.com/find-assets/scanner/internal/model"
 )
 
-// Day 实现"日线一箭穿心"策略。
-type Day struct {
-	MinBars int     // 上市天数要求（按交易日近似），默认 125
+// Pierce 实现"一箭穿心"形态：EMA 高度粘合后，一根放量阳线同时穿透均线带上下沿。
+// 该形态与周期无关，可作用于日线（日线一箭穿心）或周线（周线一箭穿心）。
+type Pierce struct {
+	MinBars int     // 最少 K 线根数（保证 EMA120 有意义），默认 125
 	Range   float64 // 粘合度阈值（百分比），默认 2
-	Volume  float64 // 放量阈值（百分比），默认 20，表示较前一日成交量至少增加 20%
+	Volume  float64 // 放量阈值（百分比），默认 20，表示较前一根至少放量 20%
 }
 
-func NewDay() *Day {
-	return &Day{MinBars: 125, Range: 2, Volume: 20}
+// newPierce 按周期给出合适的默认参数。
+func newPierce(p Period) *Pierce {
+	// 日线与周线对 MinBars 取值相同（均需 125 根以使 EMA120 收敛），
+	// 语义分别为"约半年交易日"与"约两年半"，可按需通过 Options 覆盖。
+	return &Pierce{MinBars: 125, Range: 2, Volume: 20}
 }
 
-func (d *Day) Mode() string  { return "day" }
-func (d *Day) Title() string { return "日线一箭穿心" }
+func (p *Pierce) Name() string  { return "pierce" }
+func (p *Pierce) Label() string { return "一箭穿心" }
 
-func (d *Day) Match(stock model.Stock, daily []model.Kline) (model.Result, bool) {
-	if len(daily) < d.MinBars {
+func (p *Pierce) Eval(stock model.Stock, bars []model.Kline) (model.Result, bool) {
+	if len(bars) < p.MinBars {
 		return model.Result{}, false
 	}
-	closes := model.Closes(daily)
+	closes := model.Closes(bars)
 	ema5 := indicator.EMA(closes, 5)
 	ema10 := indicator.EMA(closes, 10)
 	ema30 := indicator.EMA(closes, 30)
@@ -48,23 +52,23 @@ func (d *Day) Match(stock model.Stock, daily []model.Kline) (model.Result, bool)
 		return model.Result{}, false
 	}
 	emaRange := (maxE - minE) / minE
-	if emaRange > d.Range/100 {
+	if emaRange > p.Range/100 {
 		return model.Result{}, false
 	}
 
-	k := daily[last]
+	k := bars[last]
 	if !(k.Close > k.Open) { // 阳线
 		return model.Result{}, false
 	}
 	if !(k.High > maxE && k.Low < minE) { // 一箭穿心
 		return model.Result{}, false
 	}
-	prev := daily[last-1]
+	prev := bars[last-1]
 	if prev.Volume <= 0 {
 		return model.Result{}, false
 	}
 	volumeIncrease := (float64(k.Volume) - float64(prev.Volume)) / float64(prev.Volume) * 100
-	if volumeIncrease < d.Volume {
+	if volumeIncrease < p.Volume {
 		return model.Result{}, false
 	}
 

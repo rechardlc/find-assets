@@ -14,6 +14,7 @@ import (
 	"github.com/find-assets/scanner/internal/exporter"
 	"github.com/find-assets/scanner/internal/model"
 	"github.com/find-assets/scanner/internal/service"
+	"github.com/find-assets/scanner/internal/strategy"
 )
 
 // ScanHandler 持有 Gin 路由所需的依赖。
@@ -39,11 +40,12 @@ func (h *ScanHandler) Shutdown() { h.bgCancel() }
 
 // ScanRequest HTTP 请求体。
 type ScanRequest struct {
-	Mode    string `json:"mode" binding:"required,oneof=day week"`
+	Period  string `json:"period" binding:"required,oneof=day week"`
+	Pattern string `json:"pattern" binding:"required,oneof=pierce reversal"`
 	Workers int    `json:"workers,omitempty"`
-	// Range 日线策略均线粘合度阈值，百分比单位（例如 2 表示 2%）。
+	// Range pierce 形态均线粘合度阈值，百分比单位（例如 2 表示 2%）。
 	Range float64 `json:"range,omitempty"`
-	// Volume 日线策略放量阈值，百分比单位（例如 10 表示较前一日成交量增加 10%）。
+	// Volume pierce 形态放量阈值，百分比单位（例如 10 表示较前一根成交量增加 10%）。
 	Volume    float64 `json:"volume,omitempty"`
 	BarsLimit int     `json:"bars_limit,omitempty"`
 }
@@ -62,7 +64,8 @@ func (h *ScanHandler) SyncScan(c *gin.Context) {
 	defer h.running.Store(0)
 
 	rep, err := h.svc.Run(c.Request.Context(), service.Params{
-		Mode:      req.Mode,
+		Period:    req.Period,
+		Pattern:   req.Pattern,
 		Workers:   req.Workers,
 		BarsLimit: req.BarsLimit,
 		Range:     req.Range,
@@ -88,7 +91,7 @@ func (h *ScanHandler) AsyncScan(c *gin.Context) {
 		return
 	}
 
-	task := newTask(uuid.NewString(), req.Mode)
+	task := newTask(uuid.NewString(), req.Period, req.Pattern)
 	task.Status = StatusRunning
 	h.store.Put(task)
 
@@ -97,7 +100,8 @@ func (h *ScanHandler) AsyncScan(c *gin.Context) {
 		defer task.markFinished()
 
 		rep, err := h.svc.Run(h.bgCtx, service.Params{
-			Mode:      req.Mode,
+			Period:    req.Period,
+			Pattern:   req.Pattern,
 			Workers:   req.Workers,
 			BarsLimit: req.BarsLimit,
 			Range:     req.Range,
@@ -150,7 +154,8 @@ func (h *ScanHandler) GetResult(c *gin.Context) {
 	}
 	resp := gin.H{
 		"task_id":     task.ID,
-		"mode":        task.Mode,
+		"period":      task.Period,
+		"pattern":     task.Pattern,
 		"status":      task.Status,
 		"done":        atomic.LoadInt64(&task.Done),
 		"total":       atomic.LoadInt64(&task.Total),
@@ -232,18 +237,32 @@ func (h *ScanHandler) Export(c *gin.Context) {
 	}
 	c.Header("Content-Type", exp.ContentType())
 	c.Header("Content-Disposition", fmt.Sprintf(
-		`attachment; filename="scan_%s_%s.%s"`,
-		task.Mode, task.StartedAt.Format("20060102_150405"), format,
+		`attachment; filename="scan_%s_%s_%s.%s"`,
+		task.Period, task.Pattern, task.StartedAt.Format("20060102_150405"), format,
 	))
 	_ = exp.Write(c.Writer, task.Report)
 }
 
-// ListStrategies 列出当前已注册的策略。
+// ListStrategies 列出可选的周期、形态及其全部组合。
 func (h *ScanHandler) ListStrategies(c *gin.Context) {
+	periods := strategy.Periods()
+	patterns := strategy.Patterns()
+
+	combos := make([]gin.H, 0, len(periods)*len(patterns))
+	for _, pd := range periods {
+		for _, pt := range patterns {
+			combos = append(combos, gin.H{
+				"period":  pd.Name,
+				"pattern": pt.Name,
+				"mode":    pd.Name + ":" + pt.Name,
+				"title":   pd.Label + pt.Label,
+			})
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"strategies": []gin.H{
-			{"mode": "day", "title": "日线一箭穿心"},
-			{"mode": "week", "title": "周线超跌拐点"},
-		},
+		"periods":    periods,
+		"patterns":   patterns,
+		"strategies": combos,
 	})
 }

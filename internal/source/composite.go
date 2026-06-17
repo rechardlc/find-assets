@@ -42,6 +42,12 @@ func NewComposite(spec string) (*Composite, error) {
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		switch {
+		case p == "auto":
+			out = append(out,
+				namedSource{name: "eastmoney", src: NewEastMoney()},
+				namedSource{name: "sina", src: NewSina()},
+				namedSource{name: "tencent", src: NewTencent()},
+			)
 		case p == "em" || p == "eastmoney" || p == "":
 			out = append(out, namedSource{name: "eastmoney", src: NewEastMoney()})
 		case p == "sina":

@@ -16,6 +16,6 @@ func (Console) Write(w io.Writer, r *Report) error {
 		fmt.Fprintf(w, "%s %s\n", it.Code, it.Name)
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "符合条件的股票共计: %d 只。 耗时: %s\n", r.Matched, r.Elapsed)
+	fmt.Fprintf(w, "符合条件的标的共计: %d 个。 耗时: %s\n", r.Matched, r.Elapsed)
 	return nil
 }

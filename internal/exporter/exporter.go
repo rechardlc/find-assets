@@ -10,7 +10,9 @@ import (
 // Report 用于序列化扫描结果，所有 Exporter 共用。
 type Report struct {
 	TaskID     string         `json:"task_id,omitempty"`
-	Mode       string         `json:"mode"`
+	Period     string         `json:"period"`  // 周期，例如 "day" / "week"
+	Pattern    string         `json:"pattern"` // 形态，例如 "pierce" / "reversal"
+	Mode       string         `json:"mode"`    // 组合标识，例如 "day:pierce"
 	Title      string         `json:"title"`
 	StartedAt  time.Time      `json:"started_at"`
 	FinishedAt time.Time      `json:"finished_at"`

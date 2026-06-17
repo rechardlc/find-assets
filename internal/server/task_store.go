@@ -29,7 +29,8 @@ type ProgressEvent struct {
 // Task 一个异步扫描任务的运行时状态。
 type Task struct {
 	ID         string           `json:"id"`
-	Mode       string           `json:"mode"`
+	Period     string           `json:"period"`
+	Pattern    string           `json:"pattern"`
 	Status     TaskStatus       `json:"status"`
 	Total      int64            `json:"total"`
 	Done       int64            `json:"done"`
@@ -43,10 +44,11 @@ type Task struct {
 	finished    chan struct{}
 }
 
-func newTask(id, mode string) *Task {
+func newTask(id, period, pattern string) *Task {
 	return &Task{
 		ID:        id,
-		Mode:      mode,
+		Period:    period,
+		Pattern:   pattern,
 		Status:    StatusPending,
 		StartedAt: time.Now(),
 		finished:  make(chan struct{}),

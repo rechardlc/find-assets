@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -31,12 +30,13 @@ func (s *ScanService) Source() source.Source {
 
 // Params 扫描参数。
 type Params struct {
-	Mode      string
+	Period    string // 周期：day | week
+	Pattern   string // 形态：pierce | reversal
 	Workers   int
 	BarsLimit int
-	// Range 日线策略均线粘合度阈值（百分比，例如 2 表示 2%）。
+	// Range pierce 形态均线粘合度阈值（百分比，例如 2 表示 2%）。
 	Range float64
-	// Volume 日线策略放量阈值（百分比，例如 10 表示较前一日增加 10%）。
+	// Volume pierce 形态放量阈值（百分比，例如 10 表示较前一根增加 10%）。
 	Volume   float64
 	TaskID   string
 	Progress scanner.ProgressFn
@@ -45,15 +45,12 @@ type Params struct {
 
 // Run 执行扫描并返回标准化报告。
 func (s *ScanService) Run(ctx context.Context, p Params) (*exporter.Report, error) {
-	strat := strategy.Get(p.Mode)
-	if strat == nil {
-		return nil, errors.New("未知策略模式: " + p.Mode)
-	}
-	if d, ok := strat.(*strategy.Day); ok && p.Range > 0 {
-		d.Range = p.Range
-	}
-	if d, ok := strat.(*strategy.Day); ok && p.Volume > 0 {
-		d.Volume = p.Volume
+	strat, err := strategy.Get(p.Period, p.Pattern, strategy.Options{
+		Range:  p.Range,
+		Volume: p.Volume,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	startedAt := time.Now()
@@ -72,8 +69,8 @@ func (s *ScanService) Run(ctx context.Context, p Params) (*exporter.Report, erro
 	})
 	finishedAt := time.Now()
 
-	// day 策略：按均线粘合度从小到大排序（越小越粘合，越靠前）。
-	if strat.Mode() == "day" {
+	// pierce 形态：按均线粘合度从小到大排序（越小越粘合，越靠前）。
+	if strat.Pattern() == "pierce" {
 		sort.SliceStable(results, func(i, j int) bool {
 			return results[i].Snapshot.Range < results[j].Snapshot.Range
 		})
@@ -81,6 +78,8 @@ func (s *ScanService) Run(ctx context.Context, p Params) (*exporter.Report, erro
 
 	rep := &exporter.Report{
 		TaskID:     p.TaskID,
+		Period:     strat.Period(),
+		Pattern:    strat.Pattern(),
 		Mode:       strat.Mode(),
 		Title:      strat.Title(),
 		StartedAt:  startedAt,

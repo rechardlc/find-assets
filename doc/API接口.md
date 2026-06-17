@@ -1,12 +1,15 @@
 # API 接口文档
 
-HTTP 服务通过 `-serve -addr=:8080` 启动，基础路径为 `/api/v1`。
+HTTP 服务通过 A 股扫描器 `find-assets.exe -serve -addr=:8080` 启动，基础路径为 `/api/v1`。
+
+> 当前 HTTP API 面向 A 股扫描任务。数字货币 USDT 永续合约扫描器使用独立 CLI：`crypto-scanner.exe`，详见 [数字货币合约扫描器设计](数字货币合约扫描器设计.md)。
 
 ## 通用说明
 
 - Content-Type：`application/json`
 - 跨域：默认允许 `*`（开发联调用）
 - 扫描限流：同一时刻仅允许 **1 个**扫描任务运行
+- 市场范围：A 股（沪深主板、创业板、科创板）
 
 ---
 
@@ -30,13 +33,25 @@ GET /api/v1/health
 GET /api/v1/strategies
 ```
 
+策略由「周期 × 形态」两个正交维度组合而成。响应同时给出 HTTP A 股入口支持的两个维度取值与全部组合。
+
 **响应**：
 
 ```json
 {
+  "periods": [
+    { "name": "day", "label": "日线" },
+    { "name": "week", "label": "周线" }
+  ],
+  "patterns": [
+    { "name": "pierce", "label": "一箭穿心" },
+    { "name": "reversal", "label": "超跌拐点" }
+  ],
   "strategies": [
-    { "mode": "day", "title": "日线一箭穿心" },
-    { "mode": "week", "title": "周线超跌拐点" }
+    { "period": "day",  "pattern": "pierce",   "mode": "day:pierce",   "title": "日线一箭穿心" },
+    { "period": "day",  "pattern": "reversal", "mode": "day:reversal", "title": "日线超跌拐点" },
+    { "period": "week", "pattern": "pierce",   "mode": "week:pierce",  "title": "周线一箭穿心" },
+    { "period": "week", "pattern": "reversal", "mode": "week:reversal","title": "周线超跌拐点" }
   ]
 }
 ```
@@ -55,7 +70,8 @@ POST /api/v1/scans
 
 ```json
 {
-  "mode": "day",
+  "period": "day",
+  "pattern": "pierce",
   "workers": 100,
   "range": 2,
   "volume": 20,
@@ -65,10 +81,11 @@ POST /api/v1/scans
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| mode | string | 是 | `day` 或 `week` |
+| period | string | 是 | 周期：`day` 或 `week` |
+| pattern | string | 是 | 形态：`pierce` 或 `reversal` |
 | workers | int | 否 | 并发数，默认 100 |
-| range | float | 否 | 日线粘合度阈值（百分比，2 = 2%），默认 2 |
-| volume | float | 否 | 日线放量阈值（百分比，20 = 较前一日成交量增加 20%），默认 20 |
+| range | float | 否 | `pierce` 粘合度阈值（百分比，2 = 2%），默认 2 |
+| volume | float | 否 | `pierce` 放量阈值（百分比，20 = 较前一根成交量增加 20%），默认 20 |
 | bars_limit | int | 否 | 拉取日线根数，默认 600 |
 
 **响应**（200）：
@@ -76,7 +93,9 @@ POST /api/v1/scans
 ```json
 {
   "task_id": "8f3a...",
-  "mode": "day",
+  "period": "day",
+  "pattern": "pierce",
+  "mode": "day:pierce",
   "title": "日线一箭穿心",
   "started_at": "2026-05-28T14:30:22+08:00",
   "finished_at": "2026-05-28T14:30:31+08:00",
@@ -87,8 +106,8 @@ POST /api/v1/scans
     {
       "code": "600519",
       "name": "贵州茅台",
-      "tag": "[日线穿心突破]",
-      "metric": "粘合度: 0.82%",
+      "tag": "一箭穿心",
+      "metric": "粘合度: 0.82%, 放量: 20.00%",
       "snapshot": {
         "date": "2026-05-28",
         "close": 1680.5,
@@ -143,7 +162,8 @@ GET /api/v1/scans/:id
 ```json
 {
   "task_id": "8f3a...",
-  "mode": "day",
+  "period": "day",
+  "pattern": "pierce",
   "status": "done",
   "done": 5320,
   "total": 5320,
@@ -212,25 +232,25 @@ GET /api/v1/scans/:id/export?format=md
 ### cURL
 
 ```bash
-# 同步扫描（默认粘合度 2%，放量 20%）
+# 同步扫描：日线一箭穿心（默认粘合度 2%，放量 20%）
 curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
-  -d '{"mode":"day"}'
+  -d '{"period":"day","pattern":"pierce"}'
 
 # 自定义粘合度为 1.2%
 curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
-  -d '{"mode":"day","range":1.2}'
+  -d '{"period":"day","pattern":"pierce","range":1.2}'
 
-# 自定义放量阈值为较前一日高 20%
+# 新组合：周线一箭穿心
 curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
-  -d '{"mode":"day","volume":20}'
+  -d '{"period":"week","pattern":"pierce"}'
 
-# 异步扫描 + 轮询
+# 异步扫描 + 轮询：周线超跌拐点
 TASK=$(curl -s -X POST http://localhost:8080/api/v1/scans/async \
   -H "Content-Type: application/json" \
-  -d '{"mode":"week"}' | jq -r .task_id)
+  -d '{"period":"week","pattern":"reversal"}' | jq -r .task_id)
 
 curl http://localhost:8080/api/v1/scans/$TASK
 
@@ -241,7 +261,7 @@ curl "http://localhost:8080/api/v1/scans/$TASK/export?format=md" -o result.md
 ### PowerShell
 
 ```powershell
-$body = '{"mode":"day"}'
+$body = '{"period":"day","pattern":"pierce"}'
 Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/v1/scans" `
   -ContentType "application/json" -Body $body
 ```

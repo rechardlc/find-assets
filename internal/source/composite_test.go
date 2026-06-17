@@ -73,6 +73,20 @@ func TestNewComposite_AutoExpands(t *testing.T) {
 	}
 }
 
+func TestNewComposite_AutoExpandsInsideFallbackSpec(t *testing.T) {
+	c, err := NewComposite("file:./stocks.json,auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{c.sources[0].name, c.sources[1].name, c.sources[2].name, c.sources[3].name}
+	want := []string{"file:./stocks.json", "eastmoney", "sina", "tencent"}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("order mismatch: %v", names)
+		}
+	}
+}
+
 func TestNewComposite_ExplicitSpec(t *testing.T) {
 	c, err := NewComposite("sina,em")
 	if err != nil {
