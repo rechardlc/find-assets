@@ -20,25 +20,27 @@ import (
 )
 
 type config struct {
-	source    string
-	pool      string
-	top       int
-	interval  string
-	pattern   string
-	bars      int
-	workers   int
-	schedule  bool
-	delay     time.Duration
-	exportArg string
-	outDir    string
-	mail      bool
-	mailTo    string
-	mailFrom  string
-	smtpHost  string
-	smtpPort  int
-	smtpUser  string
-	smtpPass  string
-	envFile   string
+	source     string
+	pool       string
+	top        int
+	interval   string
+	pattern    string
+	bars       int
+	workers    int
+	schedule   bool
+	delay      time.Duration
+	exportArg  string
+	outDir     string
+	mail       bool
+	mailTo     string
+	mailFrom   string
+	smtpHost   string
+	smtpPort   int
+	smtpUser   string
+	smtpPass   string
+	envFile    string
+	custom     bool
+	customFile string
 }
 
 func main() {
@@ -57,7 +59,13 @@ func main() {
 	svc := crypto.NewService(src)
 
 	run := func() {
-		assets, err := loadOrBuildPool(ctx, src, cfg.pool, cfg.top)
+		var assets []crypto.Asset
+		var err error
+		if cfg.custom {
+			assets, err = loadCustomAssets(cfg.customFile)
+		} else {
+			assets, err = loadOrBuildPool(ctx, src, cfg.pool, cfg.top)
+		}
 		if err != nil {
 			log.Printf("合约池准备失败: %v", err)
 			return
@@ -93,6 +101,14 @@ func main() {
 	for {
 		next := crypto.NextDelayedRun(time.Now(), intervalDuration, cfg.delay)
 		fmt.Printf("下一次扫描时间: %s\n", next.Format("2006-01-02 15:04:05"))
+		if cfg.custom {
+			assets, err := loadCustomAssets(cfg.customFile)
+			if err != nil {
+				log.Printf("自定义币种读取失败: %v", err)
+			} else {
+				fmt.Printf("扫描币种: %s\n", formatAssetSymbols(assets))
+			}
+		}
 		timer := time.NewTimer(time.Until(next))
 		select {
 		case <-ctx.Done():
@@ -131,6 +147,8 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&cfg.smtpUser, "smtp-user", "rechard.liu@qq.com", "SMTP 用户名")
 	fs.StringVar(&cfg.smtpPass, "smtp-pass", os.Getenv("FIND_ASSETS_SMTP_PASS"), "SMTP 授权码；建议使用 FIND_ASSETS_SMTP_PASS 环境变量")
 	fs.StringVar(&cfg.envFile, "env", envFile, "环境变量文件路径；默认读取 .env")
+	fs.BoolVar(&cfg.custom, "custom", false, "读取本地自定义数字货币列表；默认关闭")
+	fs.StringVar(&cfg.customFile, "custom-file", defaultCustomFile, "本地自定义数字货币列表文件；一行一个交易对")
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
 	}

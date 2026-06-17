@@ -97,6 +97,17 @@ $env:FIND_ASSETS_SMTP_PASS="你的QQ邮箱授权码"
 
 # 导出 JSON + Markdown
 .\crypto-scanner.exe -export=json,md -out=./output
+
+# 读取本地自定义交易对列表（默认文件：crypto_symbols.txt）
+.\crypto-scanner.exe -custom=true -schedule=false
+```
+
+`crypto_symbols.txt` 内容示例：
+
+```text
+BTCUSDT
+ETHUSDT
+SOLUSDT
 ```
 
 ## A 股命令行参数
@@ -137,6 +148,8 @@ $env:FIND_ASSETS_SMTP_PASS="你的QQ邮箱授权码"
 | `-smtp-user` | rechard.liu@qq.com | SMTP 用户名 |
 | `-smtp-pass` | 环境变量 `FIND_ASSETS_SMTP_PASS` | SMTP 授权码 |
 | `-env` | .env | 环境变量文件路径 |
+| `-custom` | false | 是否读取本地自定义数字货币列表 |
+| `-custom-file` | ./crypto_symbols.txt | 本地自定义数字货币列表文件，一行一个交易对 |
 
 ## 项目结构
 
