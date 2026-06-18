@@ -11,8 +11,8 @@ import (
 
 func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 	msg, err := BuildReportEmail(Config{
-		From: "rechard.liu@qq.com",
-		To:   "rechard.liu@qq.com",
+		From: "richard_0525@foxmail.com",
+		To:   "richard_0525@foxmail.com",
 	}, &exporter.Report{
 		Title:     "15分钟超跌拐点",
 		Mode:      "15m:reversal",
@@ -28,8 +28,8 @@ func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 	}
 	text := string(msg)
 	for _, want := range []string{
-		"From: rechard.liu@qq.com",
-		"To: rechard.liu@qq.com",
+		"From: richard_0525@foxmail.com",
+		"To: richard_0525@foxmail.com",
 		"Subject: find-assets 命中提醒：15m:reversal 命中 1 个",
 		"PEPEUSDT",
 	} {

@@ -1,0 +1,190 @@
+{
+  "date": "2026-06-17",
+  "exchange": "okx",
+  "pool": "hot_alt",
+  "contract": "usdt_perp",
+  "top": 20,
+  "generated_at": "2026-06-17T10:30:46.9768065+08:00",
+  "assets": [
+    {
+      "symbol": "BSBUSDT",
+      "exchange_symbol": "BSB-USDT-SWAP",
+      "name": "BSB USDT Perpetual",
+      "base": "BSB",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 101.5454794956157
+    },
+    {
+      "symbol": "BEATUSDT",
+      "exchange_symbol": "BEAT-USDT-SWAP",
+      "name": "BEAT USDT Perpetual",
+      "base": "BEAT",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 97.34312135917959
+    },
+    {
+      "symbol": "HUSDT",
+      "exchange_symbol": "H-USDT-SWAP",
+      "name": "H USDT Perpetual",
+      "base": "H",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 96.64761843645326
+    },
+    {
+      "symbol": "TRIAUSDT",
+      "exchange_symbol": "TRIA-USDT-SWAP",
+      "name": "TRIA USDT Perpetual",
+      "base": "TRIA",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 93.98087368586366
+    },
+    {
+      "symbol": "LABUSDT",
+      "exchange_symbol": "LAB-USDT-SWAP",
+      "name": "LAB USDT Perpetual",
+      "base": "LAB",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 91.58273441272125
+    },
+    {
+      "symbol": "SENTUSDT",
+      "exchange_symbol": "SENT-USDT-SWAP",
+      "name": "SENT USDT Perpetual",
+      "base": "SENT",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 72.35571103846671
+    },
+    {
+      "symbol": "UNIUSDT",
+      "exchange_symbol": "UNI-USDT-SWAP",
+      "name": "UNI USDT Perpetual",
+      "base": "UNI",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 62.778921656475674
+    },
+    {
+      "symbol": "WLDUSDT",
+      "exchange_symbol": "WLD-USDT-SWAP",
+      "name": "WLD USDT Perpetual",
+      "base": "WLD",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 50.99950104975211
+    },
+    {
+      "symbol": "AEROUSDT",
+      "exchange_symbol": "AERO-USDT-SWAP",
+      "name": "AERO USDT Perpetual",
+      "base": "AERO",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 44.28985351564585
+    },
+    {
+      "symbol": "JTOUSDT",
+      "exchange_symbol": "JTO-USDT-SWAP",
+      "name": "JTO USDT Perpetual",
+      "base": "JTO",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 43.70926065880041
+    },
+    {
+      "symbol": "AXTIUSDT",
+      "exchange_symbol": "AXTI-USDT-SWAP",
+      "name": "AXTI USDT Perpetual",
+      "base": "AXTI",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 38.61416935199203
+    },
+    {
+      "symbol": "ZBTUSDT",
+      "exchange_symbol": "ZBT-USDT-SWAP",
+      "name": "ZBT USDT Perpetual",
+      "base": "ZBT",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 37.834438962082196
+    },
+    {
+      "symbol": "SPACEUSDT",
+      "exchange_symbol": "SPACE-USDT-SWAP",
+      "name": "SPACE USDT Perpetual",
+      "base": "SPACE",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 37.38184709299758
+    },
+    {
+      "symbol": "SUSHIUSDT",
+      "exchange_symbol": "SUSHI-USDT-SWAP",
+      "name": "SUSHI USDT Perpetual",
+      "base": "SUSHI",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 37.14800773610652
+    },
+    {
+      "symbol": "SOXLUSDT",
+      "exchange_symbol": "SOXL-USDT-SWAP",
+      "name": "SOXL USDT Perpetual",
+      "base": "SOXL",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 36.91288347421036
+    },
+    {
+      "symbol": "TIAUSDT",
+      "exchange_symbol": "TIA-USDT-SWAP",
+      "name": "TIA USDT Perpetual",
+      "base": "TIA",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 35.01445926629452
+    },
+    {
+      "symbol": "COAIUSDT",
+      "exchange_symbol": "COAI-USDT-SWAP",
+      "name": "COAI USDT Perpetual",
+      "base": "COAI",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 34.6045025304558
+    },
+    {
+      "symbol": "HYPEUSDT",
+      "exchange_symbol": "HYPE-USDT-SWAP",
+      "name": "HYPE USDT Perpetual",
+      "base": "HYPE",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 33.48829414935977
+    },
+    {
+      "symbol": "PARTIUSDT",
+      "exchange_symbol": "PARTI-USDT-SWAP",
+      "name": "PARTI USDT Perpetual",
+      "base": "PARTI",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 33.45558006910482
+    },
+    {
+      "symbol": "BABYUSDT",
+      "exchange_symbol": "BABY-USDT-SWAP",
+      "name": "BABY USDT Perpetual",
+      "base": "BABY",
+      "quote": "USDT",
+      "exchange": "okx",
+      "score": 32.974442432534026
+    }
+  ]
+}

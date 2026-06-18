@@ -32,7 +32,7 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if !cfg.mail {
 		t.Fatal("expected mail notification enabled by default")
 	}
-	if cfg.mailTo != "rechard.liu@qq.com" || cfg.mailFrom != "rechard.liu@qq.com" || cfg.smtpUser != "rechard.liu@qq.com" {
+	if cfg.mailTo != "richard_0525@foxmail.com" || cfg.mailFrom != "richard_0525@foxmail.com" || cfg.smtpUser != "richard_0525@foxmail.com" {
 		t.Fatalf("unexpected mail defaults: to=%q from=%q user=%q", cfg.mailTo, cfg.mailFrom, cfg.smtpUser)
 	}
 	if cfg.smtpHost != "smtp.qq.com" || cfg.smtpPort != 465 {

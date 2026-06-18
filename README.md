@@ -89,7 +89,7 @@ $env:FIND_ASSETS_SMTP_PASS="你的QQ邮箱授权码"
 ```
 
 ```powershell
-# 默认定时扫描：命中时推送到 rechard.liu@qq.com
+# 默认定时扫描：命中时推送到 richard_0525@foxmail.com
 .\crypto-scanner.exe
 
 # 单次扫描
@@ -141,11 +141,11 @@ SOLUSDT
 | `-export` | console | 导出格式：`console,json,md` |
 | `-out` | ./output | 文件导出目录 |
 | `-mail` | true | 命中时发送邮件通知 |
-| `-mail-to` | rechard.liu@qq.com | 邮件收件人 |
-| `-mail-from` | rechard.liu@qq.com | 邮件发件人 |
+| `-mail-to` | richard_0525@foxmail.com | 邮件收件人 |
+| `-mail-from` | richard_0525@foxmail.com | 邮件发件人 |
 | `-smtp-host` | smtp.qq.com | SMTP 服务器 |
 | `-smtp-port` | 465 | SMTP 端口 |
-| `-smtp-user` | rechard.liu@qq.com | SMTP 用户名 |
+| `-smtp-user` | richard_0525@foxmail.com | SMTP 用户名 |
 | `-smtp-pass` | 环境变量 `FIND_ASSETS_SMTP_PASS` | SMTP 授权码 |
 | `-env` | .env | 环境变量文件路径 |
 | `-custom` | false | 是否读取本地自定义数字货币列表 |
