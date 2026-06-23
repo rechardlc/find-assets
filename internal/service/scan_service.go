@@ -37,8 +37,10 @@ type Params struct {
 	// Range pierce 形态均线粘合度阈值（百分比，例如 2 表示 2%）。
 	Range float64
 	// Volume pierce 形态放量阈值（百分比，例如 10 表示较前一根增加 10%）。
-	Volume   float64
-	TaskID   string
+	Volume float64
+	// DeadCross reversal 形态：死叉后第几根 K 线触发（默认 3）。
+	DeadCross int
+	TaskID    string
 	Progress scanner.ProgressFn
 	OnStocks func(total int, stocks []model.Stock) // 拉取到清单时回调
 }
@@ -46,8 +48,9 @@ type Params struct {
 // Run 执行扫描并返回标准化报告。
 func (s *ScanService) Run(ctx context.Context, p Params) (*exporter.Report, error) {
 	strat, err := strategy.Get(p.Period, p.Pattern, strategy.Options{
-		Range:  p.Range,
-		Volume: p.Volume,
+		Range:     p.Range,
+		Volume:    p.Volume,
+		DeadCross: p.DeadCross,
 	})
 	if err != nil {
 		return nil, err

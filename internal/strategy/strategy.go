@@ -18,8 +18,9 @@ type Strategy interface {
 
 // Options 构造策略时的可调参数（仅部分形态会用到）。
 type Options struct {
-	Range  float64 // pierce 形态：均线粘合度阈值（百分比）
-	Volume float64 // pierce 形态：放量阈值（百分比）
+	Range     float64 // pierce 形态：均线粘合度阈值（百分比）
+	Volume    float64 // pierce 形态：放量阈值（百分比）
+	DeadCross int     // reversal 形态：死叉后第几根 K 线触发（默认 3）
 }
 
 // combo 把一个 Period 与一个 Pattern 组合成可执行的 Strategy。
@@ -80,7 +81,11 @@ func resolvePattern(name string, p Period, opt Options) Pattern {
 		}
 		return pc
 	case "reversal":
-		return newReversal(p)
+		rv := newReversal(p)
+		if opt.DeadCross > 0 {
+			rv.DeadCrossOffset = opt.DeadCross
+		}
+		return rv
 	default:
 		return nil
 	}

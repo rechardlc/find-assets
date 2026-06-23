@@ -46,8 +46,10 @@ type ScanRequest struct {
 	// Range pierce 形态均线粘合度阈值，百分比单位（例如 2 表示 2%）。
 	Range float64 `json:"range,omitempty"`
 	// Volume pierce 形态放量阈值，百分比单位（例如 10 表示较前一根成交量增加 10%）。
-	Volume    float64 `json:"volume,omitempty"`
-	BarsLimit int     `json:"bars_limit,omitempty"`
+	Volume float64 `json:"volume,omitempty"`
+	// DeadCross reversal 形态：死叉后第几根 K 线触发（默认 3）。
+	DeadCross int `json:"dead_cross,omitempty"`
+	BarsLimit int `json:"bars_limit,omitempty"`
 }
 
 // SyncScan 同步执行一次扫描，直接返回 JSON 报告。
@@ -70,6 +72,7 @@ func (h *ScanHandler) SyncScan(c *gin.Context) {
 		BarsLimit: req.BarsLimit,
 		Range:     req.Range,
 		Volume:    req.Volume,
+		DeadCross: req.DeadCross,
 		TaskID:    uuid.NewString(),
 	})
 	if err != nil {
@@ -106,6 +109,7 @@ func (h *ScanHandler) AsyncScan(c *gin.Context) {
 			BarsLimit: req.BarsLimit,
 			Range:     req.Range,
 			Volume:    req.Volume,
+			DeadCross: req.DeadCross,
 			TaskID:    task.ID,
 			OnStocks: func(total int, _ []model.Stock) {
 				atomic.StoreInt64(&task.Total, int64(total))

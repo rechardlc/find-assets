@@ -49,3 +49,13 @@ func Cross(a, b []float64, from, to int) bool {
 	}
 	return false
 }
+
+// DeadCrossAt 判定在索引 i 处 fast 是否「下穿」slow（死叉）：
+// 前一根 fast 在 slow 之上或相等，当根 fast 跌到 slow 之下。
+// 要求 1 <= i < len(fast) == len(slow)，否则返回 false。
+func DeadCrossAt(fast, slow []float64, i int) bool {
+	if len(fast) != len(slow) || i < 1 || i >= len(fast) {
+		return false
+	}
+	return fast[i-1]-slow[i-1] >= 0 && fast[i]-slow[i] < 0
+}

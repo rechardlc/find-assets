@@ -33,7 +33,8 @@ func main() {
 		workers    = flag.Int("workers", 100, "最大并发数")
 		barsLimit  = flag.Int("bars", 600, "拉取日线根数")
 		rangeArg   = flag.Float64("range", 2, "[pierce 形态] 均线粘合度阈值，百分比单位，默认 2 (=2%)")
-		volumeArg  = flag.Float64("volume", 20, "[pierce 形态] 放量阈值，百分比单位，默认 20 (=较前一根成交量增加 20%)")
+		volumeArg  = flag.Float64("volume", 5, "[pierce 形态] 放量阈值，百分比单位，默认 5 (=较前一根成交量增加 20%)")
+		crossArg   = flag.Int("deadcross", 3, "[reversal 形态] 死叉后第几根 K 线触发，默认 3 (=死叉后第三根)")
 		exportArg  = flag.String("export", "console", "导出格式列表，逗号分隔：console,json,md")
 		outDir     = flag.String("out", "./output", "导出文件输出目录")
 		serve      = flag.Bool("serve", false, "以 HTTP 服务模式运行")
@@ -88,12 +89,12 @@ func main() {
 		os.Exit(2)
 	}
 
-	runCLI(service.New(composite), *period, *pattern, *workers, *barsLimit, *rangeArg, *volumeArg, *exportArg, *outDir, saveCachePath)
+	runCLI(service.New(composite), *period, *pattern, *workers, *barsLimit, *rangeArg, *volumeArg, *crossArg, *exportArg, *outDir, saveCachePath)
 }
 
 // ---------------- CLI 模式 ----------------
 
-func runCLI(svc *service.ScanService, period, pattern string, workers, bars int, rangePct, volumePct float64, exportArg, outDir, saveCachePath string) {
+func runCLI(svc *service.ScanService, period, pattern string, workers, bars int, rangePct, volumePct float64, deadCross int, exportArg, outDir, saveCachePath string) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -101,6 +102,9 @@ func runCLI(svc *service.ScanService, period, pattern string, workers, bars int,
 	if pattern == "pierce" {
 		fmt.Printf("   均线粘合度阈值: %.2f%% (range)\n", rangePct)
 		fmt.Printf("   放量阈值: %.2f%% (volume)\n", volumePct)
+	}
+	if pattern == "reversal" {
+		fmt.Printf("   死叉后第 %d 根 K 线触发 (deadcross)\n", deadCross)
 	}
 	fmt.Println("1. 正在拉取全市场股票清单...")
 
@@ -110,7 +114,7 @@ func runCLI(svc *service.ScanService, period, pattern string, workers, bars int,
 
 	rep, err := svc.Run(ctx, service.Params{
 		Period: period, Pattern: pattern, Workers: workers, BarsLimit: bars,
-		Range: rangePct, Volume: volumePct, TaskID: uuid.NewString(),
+		Range: rangePct, Volume: volumePct, DeadCross: deadCross, TaskID: uuid.NewString(),
 		OnStocks: func(total int, stocks []model.Stock) {
 			totalStocks = total
 			fetchedStocks = stocks
@@ -243,6 +247,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "  -b,  -bars int           拉取日线根数 (默认 600)\n")
 	fmt.Fprintf(w, "  -r,  -range float        [pierce] 粘合度阈值%% (默认 2)\n")
 	fmt.Fprintf(w, "  -v,  -volume float       [pierce] 放量阈值%% (默认 20)\n")
+	fmt.Fprintf(w, "  -dc, -deadcross int      [reversal] 死叉后第几根 K 线触发 (默认 3)\n")
 	fmt.Fprintf(w, "  -e,  -export string      导出格式 console,json,md (默认 console)\n")
 	fmt.Fprintf(w, "  -o,  -out string         文件导出目录 (默认 ./output)\n")
 	fmt.Fprintf(w, "  -s,  -serve              以 HTTP 服务模式运行\n")

@@ -16,6 +16,7 @@ var flagAliases = map[string]string{
 	"s":  "serve",
 	"a":  "addr",
 	"so": "source",
+	"dc": "deadcross",
 	"h":  "help",
 }
 
@@ -23,7 +24,7 @@ var flagAliases = map[string]string{
 var knownLongFlags = map[string]bool{
 	"period": true, "pattern": true, "workers": true, "bars": true,
 	"range": true, "volume": true, "export": true, "out": true,
-	"serve": true, "addr": true, "source": true, "help": true,
+	"serve": true, "addr": true, "source": true, "deadcross": true, "help": true,
 }
 
 // expandShortFlags 把 argv 中的短选项展开为完整 flag 名，供 flag.Parse 使用。
