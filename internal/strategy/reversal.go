@@ -9,7 +9,8 @@ import (
 )
 
 // Reversal 实现"超跌拐点"形态：长期均线发生死叉后，价格在第三根 K 线上仍维持
-// 空头排列、且相邻均线之间保持足够间距（避免均线粘合的假信号）。
+// 空头排列、相邻均线之间保持足够间距（避免均线粘合的假信号），且拐点形成期内
+// 量能递减（缩量下跌，卖压衰竭）。
 // 该形态与周期无关，可作用于周线（周线超跌拐点）或日线（日线超跌拐点）。
 type Reversal struct {
 	MinBarsNew      int     // 新标的最少根数，不足则淘汰
@@ -90,6 +91,12 @@ func (r *Reversal) Eval(stock model.Stock, bars []model.Kline) (model.Result, bo
 		}
 	}
 
+	// 3) 量能递减：死叉根 → 当根为拐点形成期（默认 4 根），要求后两根量能
+	//    都不高于前两根中的较大者（缩量下跌，卖压衰竭），过滤放量下杀的假拐点。
+	if !volumeShrinking(bars, crossIdx, last) {
+		return model.Result{}, false
+	}
+
 	snap := model.Snapshot{
 		Date:  bars[last].Date.Format("2006-01-02"),
 		Close: bars[last].Close,
@@ -112,6 +119,20 @@ func (r *Reversal) Eval(stock model.Stock, bars []model.Kline) (model.Result, bo
 		Metric:   fmt.Sprintf("样本 %d 根", n),
 		Snapshot: snap,
 	}, true
+}
+
+// volumeShrinking 判定拐点形成期（from..to，闭区间，默认 4 根）量能是否严格递减：
+// 取窗口前两根成交量的较大者为基准，与后两根串成序列 frontMax > 倒二根 > 最后一根，
+// 三者严格递减（不允许相等）。窗口不足 4 根时不做此约束（宽松降级）。
+func volumeShrinking(bars []model.Kline, from, to int) bool {
+	if to-from+1 < 4 {
+		return true
+	}
+	frontMax := bars[from].Volume
+	if bars[from+1].Volume > frontMax {
+		frontMax = bars[from+1].Volume
+	}
+	return frontMax > bars[to-1].Volume && bars[to-1].Volume > bars[to].Volume
 }
 
 // gapPct 返回两条均线的相对间距百分比，以较大值为基准。
