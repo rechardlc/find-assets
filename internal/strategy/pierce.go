@@ -60,7 +60,7 @@ func (p *Pierce) Eval(stock model.Stock, bars []model.Kline) (model.Result, bool
 	if !(k.Close > k.Open) { // 阳线
 		return model.Result{}, false
 	}
-	if !(k.High > maxE && k.Low < minE) { // 一箭穿心
+	if !(k.Close > maxE && k.Low < minE) { // 一箭穿心，收盘确认突破
 		return model.Result{}, false
 	}
 	prev := bars[last-1]

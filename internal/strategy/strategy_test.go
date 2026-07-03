@@ -54,6 +54,37 @@ func TestDayPierce_HitArrowThroughHeart(t *testing.T) {
 	}
 }
 
+func TestDayPierce_RequiresCloseAboveEMA(t *testing.T) {
+	s := mustGet(t, "day", "pierce", Options{Range: 5})
+
+	const days = 130
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	daily := make([]model.Kline, 0, days+1)
+	for i := 0; i < days; i++ {
+		daily = append(daily, model.Kline{
+			Date:   start.AddDate(0, 0, i),
+			Open:   10,
+			Close:  10,
+			High:   10.05,
+			Low:    9.95,
+			Volume: 1000,
+		})
+	}
+	// 最高价刺穿均线带，但收盘没有站上 MaxEMA，不应视为有效突破。
+	daily = append(daily, model.Kline{
+		Date:   start.AddDate(0, 0, days),
+		Open:   9.5,
+		Close:  9.8,
+		High:   11.0,
+		Low:    9.0,
+		Volume: 1200,
+	})
+
+	if _, ok := s.Match(model.Stock{Code: "600000", Name: "示例银行"}, daily); ok {
+		t.Fatal("should not match when only high breaks above EMA band")
+	}
+}
+
 // 一箭穿心当天必须放量，默认至少比前一根成交量高 20%。
 func TestDayPierce_RequiresVolumeIncrease(t *testing.T) {
 	s := mustGet(t, "day", "pierce", Options{Range: 5})
