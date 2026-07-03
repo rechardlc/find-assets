@@ -85,7 +85,7 @@ func TestDayPierce_RequiresCloseAboveEMA(t *testing.T) {
 	}
 }
 
-// 一箭穿心当天必须放量，默认至少比前一根成交量高 20%。
+// 一箭穿心当天必须放量，默认必须比前一根成交量高 3% 以上。
 func TestDayPierce_RequiresVolumeIncrease(t *testing.T) {
 	s := mustGet(t, "day", "pierce", Options{Range: 5})
 
@@ -108,11 +108,11 @@ func TestDayPierce_RequiresVolumeIncrease(t *testing.T) {
 		Close:  10.8,
 		High:   11.0,
 		Low:    9.0,
-		Volume: 1099,
+		Volume: 1030,
 	})
 
 	if _, ok := s.Match(model.Stock{Code: "600000", Name: "示例银行"}, daily); ok {
-		t.Fatal("should not match when arrow-through-heart bar is not 20% above previous volume")
+		t.Fatal("should not match when arrow-through-heart bar is not more than 3% above previous volume")
 	}
 }
 

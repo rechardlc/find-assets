@@ -85,7 +85,7 @@ POST /api/v1/scans
 | pattern | string | 是 | 形态：`pierce` 或 `reversal` |
 | workers | int | 否 | 并发数，默认 100 |
 | range | float | 否 | `pierce` 粘合度阈值（百分比，2 = 2%），默认 2 |
-| volume | float | 否 | `pierce` 放量阈值（百分比，20 = 较前一根成交量增加 20%），默认 20 |
+| volume | float | 否 | `pierce` 放量阈值（百分比，3 = 较前一根成交量增加 >3%），默认 3 |
 | bars_limit | int | 否 | 拉取日线根数，默认 600 |
 
 **响应**（200）：
@@ -232,7 +232,7 @@ GET /api/v1/scans/:id/export?format=md
 ### cURL
 
 ```bash
-# 同步扫描：日线一箭穿心（默认粘合度 2%，放量 20%）
+# 同步扫描：日线一箭穿心（默认粘合度 2%，放量 >3%）
 curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
   -d '{"period":"day","pattern":"pierce"}'

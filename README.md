@@ -42,7 +42,7 @@ go build -ldflags="-s -w" -o crypto-scanner.exe ./cmd/crypto-scanner
 ### A 股 CLI 模式
 
 ```powershell
-# 日线一箭穿心（默认粘合度 2%，放量 20%）
+# 日线一箭穿心（默认粘合度 2%，放量 >3%）
 .\find-assets.exe -period=day -pattern=pierce
 
 # 日线一箭穿心，自定义粘合度阈值为 1.2%
@@ -119,7 +119,7 @@ SOLUSDT
 | `-workers` | 100 | 最大并发数 |
 | `-bars` | 600 | 拉取日线根数 |
 | `-range` | 2 | `pierce` 形态粘合度阈值（百分比，2 = 2%） |
-| `-volume` | 20 | `pierce` 形态放量阈值（百分比，20 = 较前一根成交量增加 20%） |
+| `-volume` | 3 | `pierce` 形态放量阈值（百分比，3 = 较前一根成交量增加 >3%） |
 | `-export` | console | 导出格式：`console,json,md` |
 | `-out` | ./output | 文件导出目录 |
 | `-serve` | false | 启动 HTTP 服务 |

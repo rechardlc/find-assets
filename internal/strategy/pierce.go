@@ -12,14 +12,14 @@ import (
 type Pierce struct {
 	MinBars int     // 最少 K 线根数（保证 EMA120 有意义），默认 125
 	Range   float64 // 粘合度阈值（百分比），默认 2
-	Volume  float64 // 放量阈值（百分比），默认 20，表示较前一根至少放量 20%
+	Volume  float64 // 放量阈值（百分比），默认 3，表示较前一根放量大于 3%
 }
 
 // newPierce 按周期给出合适的默认参数。
 func newPierce(p Period) *Pierce {
 	// 日线与周线对 MinBars 取值相同（均需 125 根以使 EMA120 收敛），
 	// 语义分别为"约半年交易日"与"约两年半"，可按需通过 Options 覆盖。
-	return &Pierce{MinBars: 125, Range: 2, Volume: 20}
+	return &Pierce{MinBars: 125, Range: 2, Volume: 3}
 }
 
 func (p *Pierce) Name() string  { return "pierce" }
@@ -68,7 +68,7 @@ func (p *Pierce) Eval(stock model.Stock, bars []model.Kline) (model.Result, bool
 		return model.Result{}, false
 	}
 	volumeIncrease := (float64(k.Volume) - float64(prev.Volume)) / float64(prev.Volume) * 100
-	if volumeIncrease < p.Volume {
+	if volumeIncrease <= p.Volume {
 		return model.Result{}, false
 	}
 
