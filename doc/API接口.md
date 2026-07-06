@@ -2,7 +2,7 @@
 
 HTTP 服务通过 A 股扫描器 `find-assets.exe -serve -addr=:8080` 启动，基础路径为 `/api/v1`。
 
-> 当前 HTTP API 面向 A 股扫描任务。数字货币 USDT 永续合约扫描器使用独立 CLI：`crypto-scanner.exe`，详见 [数字货币合约扫描器设计](数字货币合约扫描器设计.md)。
+> 当前 HTTP API 面向 A 股扫描任务。数字货币 USDT 永续合约扫描器使用独立 CLI：`crypto-scanner.exe`，默认同时监听 `15m,1h,4h` 三个周期，详见 [数字货币合约扫描器设计](数字货币合约扫描器设计.md)。
 
 ## 通用说明
 

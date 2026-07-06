@@ -59,3 +59,13 @@ func DeadCrossAt(fast, slow []float64, i int) bool {
 	}
 	return fast[i-1]-slow[i-1] >= 0 && fast[i]-slow[i] < 0
 }
+
+// GoldenCrossAt 判定在索引 i 处 fast 是否「上穿」slow（金叉）：
+// 前一根 fast 在 slow 之下或相等，当根 fast 升到 slow 之上。
+// 要求 1 <= i < len(fast) == len(slow)，否则返回 false。
+func GoldenCrossAt(fast, slow []float64, i int) bool {
+	if len(fast) != len(slow) || i < 1 || i >= len(fast) {
+		return false
+	}
+	return fast[i-1]-slow[i-1] <= 0 && fast[i]-slow[i] > 0
+}

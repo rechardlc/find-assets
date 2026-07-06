@@ -77,7 +77,7 @@ func (s *BinanceSource) Klines(ctx context.Context, asset Asset, interval string
 	}
 	values := url.Values{}
 	values.Set("symbol", symbol)
-	values.Set("interval", interval)
+	values.Set("interval", MapIntervalForExchange(s.Name(), interval))
 	values.Set("limit", strconv.Itoa(limit))
 	raw, err := s.get(ctx, "/fapi/v1/klines?"+values.Encode())
 	if err != nil {
@@ -213,7 +213,7 @@ func (s *OKXSource) Klines(ctx context.Context, asset Asset, interval string, li
 	}
 	values := url.Values{}
 	values.Set("instId", instID)
-	values.Set("bar", interval)
+	values.Set("bar", MapIntervalForExchange(s.Name(), interval))
 	values.Set("limit", strconv.Itoa(limit))
 	raw, err := s.get(ctx, "/api/v5/market/candles?"+values.Encode())
 	if err != nil {

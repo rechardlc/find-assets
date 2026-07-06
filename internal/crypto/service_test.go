@@ -23,6 +23,48 @@ func (f fakeSource) Klines(context.Context, Asset, string, int) ([]model.Kline, 
 	return f.klines, nil
 }
 
+func TestRunReversalSkipsLongIntervalWhenBarsInsufficient(t *testing.T) {
+	src := fakeSource{
+		assets: []Asset{{Symbol: "PEPEUSDT"}},
+		klines: makeFlatKlines(300),
+	}
+	for _, interval := range []string{"1h", "4h"} {
+		rep, err := NewService(src).RunReversal(context.Background(), ScanJob{
+			Interval:  interval,
+			BarsLimit: 100,
+		})
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", interval, err)
+		}
+		if rep != nil {
+			t.Fatalf("%s: expected nil report when bars insufficient", interval)
+		}
+	}
+}
+
+func TestRunReversalSkipsLongIntervalAssetWithFewKlines(t *testing.T) {
+	src := fakeSource{
+		assets: []Asset{
+			{Symbol: "NEWUSDT"},
+			{Symbol: "OLDUSDT"},
+		},
+		klines: makeFlatKlines(80),
+	}
+	rep, err := NewService(src).RunReversal(context.Background(), ScanJob{
+		Interval:  "1h",
+		BarsLimit: 300,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep == nil {
+		t.Fatal("expected report when bars limit is sufficient")
+	}
+	if rep.Matched != 0 {
+		t.Fatalf("expected no matches when klines below minimum, got %d", rep.Matched)
+	}
+}
+
 func TestServiceRunBuildsReport(t *testing.T) {
 	src := fakeSource{
 		assets: []Asset{
@@ -32,9 +74,8 @@ func TestServiceRunBuildsReport(t *testing.T) {
 		klines: makeFlatKlines(300),
 	}
 
-	rep, err := NewService(src).Run(context.Background(), Params{
+	rep, err := NewService(src).RunReversal(context.Background(), ScanJob{
 		Interval:  "15m",
-		Pattern:   "reversal",
 		BarsLimit: 300,
 	})
 	if err != nil {
@@ -42,6 +83,9 @@ func TestServiceRunBuildsReport(t *testing.T) {
 	}
 	if rep.Period != "15m" || rep.Pattern != "reversal" || rep.Mode != "15m:reversal" {
 		t.Fatalf("unexpected strategy fields: %+v", rep)
+	}
+	if rep.Title != "15分钟拐点" {
+		t.Fatalf("unexpected title: %q", rep.Title)
 	}
 	if rep.Total != 2 {
 		t.Fatalf("expected total 2, got %d", rep.Total)

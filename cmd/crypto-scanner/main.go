@@ -9,38 +9,39 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/find-assets/scanner/internal/crypto"
+	"github.com/find-assets/scanner/internal/crypto/reversal"
 	"github.com/find-assets/scanner/internal/exporter"
 	"github.com/find-assets/scanner/internal/notify"
 	stocksource "github.com/find-assets/scanner/internal/source"
 )
 
 type config struct {
-	source     string
-	pool       string
-	top        int
-	interval   string
-	pattern    string
-	bars       int
-	workers    int
-	schedule   bool
-	delay      time.Duration
-	exportArg  string
-	outDir     string
-	mail       bool
-	mailTo     string
-	mailFrom   string
-	smtpHost   string
-	smtpPort   int
-	smtpUser   string
-	smtpPass   string
-	envFile    string
-	custom     bool
-	customFile string
+	source      string
+	pool        string
+	top         int
+	intervals   []crypto.IntervalSpec
+	bars        int
+	workers     int
+	schedule    bool
+	delay       time.Duration
+	exportArg   string
+	outDir      string
+	mail        bool
+	mailTo      string
+	mailFrom    string
+	smtpHost    string
+	smtpPort    int
+	smtpUser    string
+	smtpPass    string
+	envFile     string
+	custom      bool
+	customFile  string
 }
 
 func main() {
@@ -58,7 +59,7 @@ func main() {
 	}
 	svc := crypto.NewService(src)
 
-	run := func() {
+	runInterval := func(interval string) {
 		var assets []crypto.Asset
 		var err error
 		if cfg.custom {
@@ -67,56 +68,80 @@ func main() {
 			assets, err = loadOrBuildPool(ctx, src, cfg.pool, cfg.top)
 		}
 		if err != nil {
-			log.Printf("合约池准备失败: %v", err)
+			log.Printf("[%s] 合约池准备失败: %v", interval, err)
 			return
 		}
-		rep, err := svc.Run(ctx, crypto.Params{
-			Interval:  cfg.interval,
-			Pattern:   cfg.pattern,
+		rep, err := svc.RunReversal(ctx, crypto.ScanJob{
+			Interval:  interval,
 			BarsLimit: cfg.bars,
 			Workers:   cfg.workers,
 			Assets:    assets,
 		})
 		if err != nil {
-			log.Printf("扫描失败: %v", err)
+			log.Printf("[%s] 扫描失败: %v", interval, err)
 			return
 		}
-		if err := dispatchExports(rep, splitFormats(cfg.exportArg), cfg.outDir, "crypto_"+cfg.interval+"_"+cfg.pattern); err != nil {
-			log.Printf("导出失败: %v", err)
+		if rep == nil {
+			opt := reversal.DefaultOptions(interval)
+			log.Printf("[%s] K 线根数不足（需要至少 %d 根），跳过本周期", interval, reversal.MinRequiredBars(opt))
+			return
+		}
+		label := "crypto_" + interval + "_reversal"
+		if err := dispatchExports(rep, splitFormats(cfg.exportArg), cfg.outDir, label); err != nil {
+			log.Printf("[%s] 导出失败: %v", interval, err)
 		}
 		if err := maybeSendMail(cfg, rep); err != nil {
-			log.Printf("邮件通知失败: %v", err)
+			log.Printf("[%s] 邮件通知失败: %v", interval, err)
 		}
 	}
 
 	if !cfg.schedule {
-		run()
+		for _, spec := range cfg.intervals {
+			runInterval(spec.Name)
+		}
 		return
 	}
 
-	intervalDuration, err := time.ParseDuration(cfg.interval)
-	if err != nil {
-		log.Fatalf("无法解析 interval %q: %v", cfg.interval, err)
-	}
+	next := crypto.InitSchedule(time.Now(), cfg.intervals, cfg.delay)
 	for {
-		next := crypto.NextDelayedRun(time.Now(), intervalDuration, cfg.delay)
-		fmt.Printf("下一次扫描时间: %s\n", next.Format("2006-01-02 15:04:05"))
-		if cfg.custom {
-			assets, err := loadCustomAssets(cfg.customFile)
-			if err != nil {
-				log.Printf("自定义币种读取失败: %v", err)
-			} else {
-				fmt.Printf("扫描币种: %s\n", formatAssetSymbols(assets))
-			}
-		}
-		timer := time.NewTimer(time.Until(next))
+		wakeAt := crypto.EarliestNext(next)
+		fmt.Printf("下一次扫描时间: %s\n", wakeAt.Format("2006-01-02 15:04:05"))
+		printUpcoming(next)
+
+		timer := time.NewTimer(time.Until(wakeAt))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return
 		case <-timer.C:
-			run()
 		}
+
+		now := time.Now()
+		due := crypto.DueIntervals(now, next)
+		if len(due) == 0 {
+			continue
+		}
+		fmt.Printf("触发周期: %s\n", strings.Join(due, ", "))
+
+		for _, name := range due {
+			runInterval(name)
+			spec, ok := crypto.SpecByName(cfg.intervals, name)
+			if !ok {
+				continue
+			}
+			crypto.AdvanceInterval(now, spec, cfg.delay, next)
+		}
+	}
+}
+
+func printUpcoming(next map[string]time.Time) {
+	names := make([]string, 0, len(next))
+	for name := range next {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fmt.Printf("  %s -> %s\n", name, next[name].Format("2006-01-02 15:04:05"))
 	}
 }
 
@@ -128,11 +153,11 @@ func parseConfig(args []string) (config, error) {
 
 	fs := flag.NewFlagSet("crypto-scanner", flag.ContinueOnError)
 	cfg := config{envFile: envFile}
+	var intervalsArg string
 	fs.StringVar(&cfg.source, "source", "binance,okx", "数据源回退顺序：binance,okx")
 	fs.StringVar(&cfg.pool, "pool", "hot_alt", "合约池：hot_alt")
 	fs.IntVar(&cfg.top, "top", 20, "每日缓存的候选合约数量")
-	fs.StringVar(&cfg.interval, "interval", "15m", "K 线周期")
-	fs.StringVar(&cfg.pattern, "pattern", "reversal", "策略形态")
+	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "K 线周期列表，逗号分隔：15m,1h,4h")
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
 	fs.BoolVar(&cfg.schedule, "schedule", true, "按 K 线周期持续扫描；如需单次扫描可传 -schedule=false")
@@ -152,6 +177,12 @@ func parseConfig(args []string) (config, error) {
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
 	}
+
+	intervals, err := crypto.ParseIntervalList(intervalsArg)
+	if err != nil {
+		return config{}, err
+	}
+	cfg.intervals = intervals
 	return cfg, nil
 }
 

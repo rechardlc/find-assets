@@ -20,8 +20,8 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if cfg.pool != "hot_alt" || cfg.top != 20 {
 		t.Fatalf("unexpected pool config: pool=%q top=%d", cfg.pool, cfg.top)
 	}
-	if cfg.interval != "15m" || cfg.pattern != "reversal" {
-		t.Fatalf("unexpected strategy config: interval=%q pattern=%q", cfg.interval, cfg.pattern)
+	if len(cfg.intervals) != 3 || cfg.intervals[0].Name != "15m" || cfg.intervals[1].Name != "1h" || cfg.intervals[2].Name != "4h" {
+		t.Fatalf("unexpected intervals: %+v", cfg.intervals)
 	}
 	if !cfg.schedule {
 		t.Fatal("expected schedule to be enabled by default")

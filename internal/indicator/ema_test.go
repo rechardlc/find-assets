@@ -56,6 +56,22 @@ func TestCross_NoCross(t *testing.T) {
 	}
 }
 
+func TestGoldenCrossAt(t *testing.T) {
+	fast := []float64{1, 1, 1, 3, 5}
+	slow := []float64{2, 2, 2, 2, 2}
+	if !GoldenCrossAt(fast, slow, 3) {
+		t.Fatal("expected golden cross at index 3")
+	}
+}
+
+func TestDeadCrossAt(t *testing.T) {
+	fast := []float64{3, 3, 3, 1, 0}
+	slow := []float64{2, 2, 2, 2, 2}
+	if !DeadCrossAt(fast, slow, 3) {
+		t.Fatal("expected dead cross at index 3")
+	}
+}
+
 func TestCross_WindowOutside(t *testing.T) {
 	a := []float64{1, 5, 5, 5, 5}
 	b := []float64{4, 4, 4, 4, 4}
