@@ -7,9 +7,15 @@ import (
 	"github.com/find-assets/scanner/internal/model"
 )
 
+const (
+	AssetStock  = "stock"
+	AssetCrypto = "crypto"
+)
+
 // Report 用于序列化扫描结果，所有 Exporter 共用。
 type Report struct {
 	TaskID     string         `json:"task_id,omitempty"`
+	AssetClass string         `json:"asset_class,omitempty"` // stock | crypto
 	Period     string         `json:"period"`  // 周期，例如 "day" / "week"
 	Pattern    string         `json:"pattern"` // 形态，例如 "pierce" / "reversal"
 	Mode       string         `json:"mode"`    // 组合标识，例如 "day:pierce"
@@ -20,6 +26,21 @@ type Report struct {
 	Total      int            `json:"total"`
 	Matched    int            `json:"matched"`
 	Results    []model.Result `json:"results"`
+}
+
+// AssetLabel 返回报告所属资产类别的中文名称。
+func (r *Report) AssetLabel() string {
+	if r == nil {
+		return "选股"
+	}
+	switch r.AssetClass {
+	case AssetCrypto:
+		return "数字货币"
+	case AssetStock:
+		return "A股选股"
+	default:
+		return "选股"
+	}
 }
 
 // Exporter 可将一次扫描结果写入任意 io.Writer。

@@ -14,9 +14,10 @@ func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 		From: "richard_0525@foxmail.com",
 		To:   "richard_0525@foxmail.com",
 	}, &exporter.Report{
-		Title:     "15分钟超跌拐点",
-		Mode:      "15m:reversal",
-		StartedAt: time.Date(2026, 6, 17, 10, 45, 0, 0, time.Local),
+		AssetClass: exporter.AssetCrypto,
+		Title:      "15分钟超跌拐点",
+		Mode:       "15m:reversal",
+		StartedAt:  time.Date(2026, 6, 17, 10, 45, 0, 0, time.Local),
 		Total:     20,
 		Matched:   1,
 		Results: []model.Result{
@@ -30,7 +31,10 @@ func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 	for _, want := range []string{
 		"From: richard_0525@foxmail.com",
 		"To: richard_0525@foxmail.com",
-		"Subject: find-assets 命中提醒：15m:reversal 命中 1 个",
+		"Subject: 命中提醒：15分钟超跌拐点 命中 1 个",
+		"数字货币 · 15分钟超跌拐点",
+		"扫描时间（服务器 ·",
+		"扫描时间（北京时间）：2026-06-17 10:45:00",
 		"PEPEUSDT",
 	} {
 		if !strings.Contains(text, want) {

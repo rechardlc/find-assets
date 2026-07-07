@@ -34,11 +34,15 @@ func BuildReportEmail(cfg Config, rep *exporter.Report) ([]byte, error) {
 	}
 
 	var body bytes.Buffer
-	if err := (exporter.Markdown{}).Write(&body, rep); err != nil {
+	if err := writeReportBody(&body, rep); err != nil {
 		return nil, err
 	}
 
-	subject := fmt.Sprintf("find-assets 命中提醒：%s 命中 %d 个", rep.Mode, rep.Matched)
+	title := strings.TrimSpace(rep.Title)
+	if title == "" {
+		title = rep.Mode
+	}
+	subject := fmt.Sprintf("命中提醒：%s 命中 %d 个", title, rep.Matched)
 	var msg bytes.Buffer
 	fmt.Fprintf(&msg, "From: %s\r\n", from)
 	fmt.Fprintf(&msg, "To: %s\r\n", to)

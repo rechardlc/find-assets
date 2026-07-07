@@ -178,7 +178,7 @@ find-assets/
 | [项目规划](doc/项目规划.md) | 背景、目标、功能需求、里程碑 |
 | [技术方案](doc/技术方案.md) | 架构设计、模块说明、算法与数据流 |
 | [API 接口](doc/API接口.md) | HTTP REST API 说明 |
-| [打包部署](doc/打包部署.md) | 编译、跨平台打包与运行 |
+| [运维部署](doc/运维部署.md) | GCP 本机打包 + 网页 SSH 运维（crypto-scanner） |
 | [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | Binance/OKX、hot_alt 合约池、缓存与 15m 调度 |
 
 ## 技术栈

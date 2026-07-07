@@ -81,6 +81,7 @@ func (s *ScanService) Run(ctx context.Context, p Params) (*exporter.Report, erro
 
 	rep := &exporter.Report{
 		TaskID:     p.TaskID,
+		AssetClass: exporter.AssetStock,
 		Period:     strat.Period(),
 		Pattern:    strat.Pattern(),
 		Mode:       strat.Mode(),

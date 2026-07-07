@@ -75,6 +75,7 @@ func (s *Service) RunReversal(ctx context.Context, job ScanJob) (*exporter.Repor
 
 	finishedAt := time.Now()
 	return &exporter.Report{
+		AssetClass: exporter.AssetCrypto,
 		Period:     job.Interval,
 		Pattern:    "reversal",
 		Mode:       job.Interval + ":reversal",
