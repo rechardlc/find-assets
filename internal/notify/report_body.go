@@ -16,19 +16,7 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 	if title == "" {
 		title = rep.Mode
 	}
-
-	const line = "══════════════════════════════════════"
-	fmt.Fprintln(w, line)
 	fmt.Fprintf(w, "  %s · %s\n", rep.AssetLabel(), title)
-	fmt.Fprintln(w, line)
-	fmt.Fprintln(w)
-
-	serverLabel := serverZoneLabel(rep.StartedAt)
-	fmt.Fprintf(w, "扫描时间（服务器 · %s）：%s\n", serverLabel, rep.StartedAt.Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(w, "扫描时间（北京时间）：%s\n", rep.StartedAt.In(beijingLocation).Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(w, "扫描标的数：%d\n", rep.Total)
-	fmt.Fprintf(w, "命中数：%d\n", rep.Matched)
-	fmt.Fprintf(w, "耗时：%s\n", rep.Elapsed)
 	fmt.Fprintln(w)
 
 	if len(rep.Results) == 0 {
@@ -36,14 +24,18 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 		return nil
 	}
 
-	const divider = "──────────────────────────────────────"
-	fmt.Fprintln(w, divider)
 	fmt.Fprintln(w, "命中清单")
-	fmt.Fprintln(w, divider)
 	for i, it := range rep.Results {
 		fmt.Fprintf(w, "  %2d. %-12s  %s\n", i+1, it.Code, it.Name)
 	}
-	fmt.Fprintln(w, divider)
+	fmt.Fprintln(w)
+
+	serverLabel := serverZoneLabel(rep.StartedAt)
+		fmt.Fprintf(w, "扫描时间（北京时间）：%s\n", rep.StartedAt.In(beijingLocation).Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(w, "扫描时间（服务器 · %s）：%s\n", serverLabel, rep.StartedAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(w, "扫描标的数：%d\n", rep.Total)
+	fmt.Fprintf(w, "命中数：%d\n", rep.Matched)
+	fmt.Fprintf(w, "耗时：%s\n", rep.Elapsed)
 	return nil
 }
 
