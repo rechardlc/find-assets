@@ -14,10 +14,10 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.source != "binance,okx" {
+	if cfg.source != "okx" {
 		t.Fatalf("unexpected source: %q", cfg.source)
 	}
-	if cfg.pool != "hot_alt" || cfg.top != 20 {
+	if cfg.pool != "hot_alt" || cfg.top != 200 {
 		t.Fatalf("unexpected pool config: pool=%q top=%d", cfg.pool, cfg.top)
 	}
 	if len(cfg.intervals) != 3 || cfg.intervals[0].Name != "15m" || cfg.intervals[1].Name != "1h" || cfg.intervals[2].Name != "4h" {
@@ -41,8 +41,29 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if cfg.custom {
 		t.Fatal("expected custom symbols to be disabled by default")
 	}
+	if !cfg.scanOnStart {
+		t.Fatal("expected scan-on-start enabled by default")
+	}
+	if cfg.rate != 15 {
+		t.Fatalf("unexpected rate default: %v", cfg.rate)
+	}
 	if cfg.customFile != defaultCustomFile {
 		t.Fatalf("unexpected custom file default: %q", cfg.customFile)
+	}
+	if len(cfg.pierceIntervals) != 2 || cfg.pierceIntervals[0].Name != "1h" || cfg.pierceIntervals[1].Name != "4h" {
+		t.Fatalf("unexpected pierce intervals default: %+v", cfg.pierceIntervals)
+	}
+}
+
+func TestParseConfigDisablesPierceWithEmptyIntervals(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig([]string{"-pierce-intervals", ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.pierceIntervals) != 0 {
+		t.Fatalf("expected pierce disabled, got %+v", cfg.pierceIntervals)
 	}
 }
 

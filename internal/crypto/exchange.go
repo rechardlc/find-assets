@@ -12,161 +12,58 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/find-assets/scanner/internal/model"
 )
 
 const (
-	defaultBinanceBaseURL = "https://fapi.binance.com"
-	defaultOKXBaseURL     = "https://www.okx.com"
+	defaultOKXBaseURL   = "https://www.okx.com"
+	defaultHTTPTimeout  = 10 * time.Second
+	defaultHTTPRetries  = 2
+	defaultRetryBackoff = 500 * time.Millisecond
+	// defaultRatePerSec 是 OKX 公共接口的默认全局限速（次/秒）。OKX 蜡烛图接口
+	// 大约为每 IP 20~40 次 / 2 秒，取偏保守的中间值并留退避余量。
+	defaultRatePerSec = 15
 )
 
-type BinanceSource struct {
-	BaseURL string
-	Client  *http.Client
-	Top     int
+// newHTTPClient 返回带超时的 HTTP client，避免交易所卡住导致 goroutine 长期挂起。
+func newHTTPClient() *http.Client {
+	return &http.Client{Timeout: defaultHTTPTimeout}
 }
 
-func NewBinanceSource(top int) *BinanceSource {
-	return &BinanceSource{BaseURL: defaultBinanceBaseURL, Client: http.DefaultClient, Top: top}
-}
-
-func (s *BinanceSource) Name() string { return "binance" }
-
-func (s *BinanceSource) ListAssets(ctx context.Context) ([]Asset, error) {
-	exchangeInfo, err := s.getBinanceExchangeInfo(ctx)
-	if err != nil {
-		return nil, err
+// newRateLimiter 创建每秒请求数的全局限速器；ratePerSec <= 0 表示不限速（返回 nil）。
+func newRateLimiter(ratePerSec float64) *rate.Limiter {
+	if ratePerSec <= 0 {
+		return nil
 	}
-	tickers, err := s.getBinanceTickers(ctx)
-	if err != nil {
-		return nil, err
+	burst := int(ratePerSec)
+	if burst < 1 {
+		burst = 1
 	}
-	funding, _ := s.getBinanceFunding(ctx)
-
-	metrics := make([]Metric, 0, len(tickers))
-	for _, t := range tickers {
-		info, ok := exchangeInfo[t.Symbol]
-		if !ok {
-			continue
-		}
-		metrics = append(metrics, Metric{
-			Symbol:             t.Symbol,
-			ExchangeSymbol:     t.Symbol,
-			Base:               info.BaseAsset,
-			Quote:              info.QuoteAsset,
-			Exchange:           s.Name(),
-			Status:             info.Status,
-			PriceChangePercent: parseFloat(t.PriceChangePercent),
-			High24h:            parseFloat(t.HighPrice),
-			Low24h:             parseFloat(t.LowPrice),
-			Open24h:            parseFloat(t.OpenPrice),
-			QuoteVolume:        parseFloat(t.QuoteVolume),
-			FundingRate:        funding[t.Symbol],
-		})
-	}
-	return BuildHotAltPool(metrics, PoolOptions{Top: s.Top, ExcludeMajors: true}), nil
-}
-
-func (s *BinanceSource) Klines(ctx context.Context, asset Asset, interval string, limit int) ([]model.Kline, error) {
-	if limit <= 0 {
-		limit = 300
-	}
-	symbol := asset.ExchangeSymbol
-	if symbol == "" {
-		symbol = asset.Symbol
-	}
-	values := url.Values{}
-	values.Set("symbol", symbol)
-	values.Set("interval", MapIntervalForExchange(s.Name(), interval))
-	values.Set("limit", strconv.Itoa(limit))
-	raw, err := s.get(ctx, "/fapi/v1/klines?"+values.Encode())
-	if err != nil {
-		return nil, err
-	}
-	return parseBinanceKlines(raw)
-}
-
-type binanceExchangeInfo struct {
-	Symbols []binanceSymbol `json:"symbols"`
-}
-
-type binanceSymbol struct {
-	Symbol       string `json:"symbol"`
-	BaseAsset    string `json:"baseAsset"`
-	QuoteAsset   string `json:"quoteAsset"`
-	ContractType string `json:"contractType"`
-	Status       string `json:"status"`
-}
-
-type binanceTicker struct {
-	Symbol             string `json:"symbol"`
-	PriceChangePercent string `json:"priceChangePercent"`
-	OpenPrice          string `json:"openPrice"`
-	HighPrice          string `json:"highPrice"`
-	LowPrice           string `json:"lowPrice"`
-	QuoteVolume        string `json:"quoteVolume"`
-}
-
-type binanceFunding struct {
-	Symbol          string `json:"symbol"`
-	LastFundingRate string `json:"lastFundingRate"`
-}
-
-func (s *BinanceSource) getBinanceExchangeInfo(ctx context.Context) (map[string]binanceSymbol, error) {
-	raw, err := s.get(ctx, "/fapi/v1/exchangeInfo")
-	if err != nil {
-		return nil, err
-	}
-	var resp binanceExchangeInfo
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, err
-	}
-	out := make(map[string]binanceSymbol, len(resp.Symbols))
-	for _, sym := range resp.Symbols {
-		if sym.ContractType == "PERPETUAL" && sym.QuoteAsset == "USDT" {
-			out[sym.Symbol] = sym
-		}
-	}
-	return out, nil
-}
-
-func (s *BinanceSource) getBinanceTickers(ctx context.Context) ([]binanceTicker, error) {
-	raw, err := s.get(ctx, "/fapi/v1/ticker/24hr")
-	if err != nil {
-		return nil, err
-	}
-	var out []binanceTicker
-	return out, json.Unmarshal(raw, &out)
-}
-
-func (s *BinanceSource) getBinanceFunding(ctx context.Context) (map[string]float64, error) {
-	raw, err := s.get(ctx, "/fapi/v1/premiumIndex")
-	if err != nil {
-		return nil, err
-	}
-	var rows []binanceFunding
-	if err := json.Unmarshal(raw, &rows); err != nil {
-		return nil, err
-	}
-	out := make(map[string]float64, len(rows))
-	for _, row := range rows {
-		out[row.Symbol] = parseFloat(row.LastFundingRate)
-	}
-	return out, nil
-}
-
-func (s *BinanceSource) get(ctx context.Context, path string) (json.RawMessage, error) {
-	return httpGet(ctx, s.Client, strings.TrimRight(s.BaseURL, "/")+path)
+	return rate.NewLimiter(rate.Limit(ratePerSec), burst)
 }
 
 type OKXSource struct {
 	BaseURL string
 	Client  *http.Client
 	Top     int
+
+	limiter *rate.Limiter
 }
 
 func NewOKXSource(top int) *OKXSource {
-	return &OKXSource{BaseURL: defaultOKXBaseURL, Client: http.DefaultClient, Top: top}
+	return NewOKXSourceWithRate(top, defaultRatePerSec)
+}
+
+// NewOKXSourceWithRate 创建带自定义全局限速（次/秒）的源；ratePerSec <= 0 表示不限速。
+func NewOKXSourceWithRate(top int, ratePerSec float64) *OKXSource {
+	return &OKXSource{
+		BaseURL: defaultOKXBaseURL,
+		Client:  newHTTPClient(),
+		Top:     top,
+		limiter: newRateLimiter(ratePerSec),
+	}
 }
 
 func (s *OKXSource) Name() string { return "okx" }
@@ -179,6 +76,9 @@ func (s *OKXSource) ListAssets(ctx context.Context) ([]Asset, error) {
 	var resp okxTickerResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
+	}
+	if resp.Code != "" && resp.Code != "0" {
+		return nil, fmt.Errorf("okx error %s: %s", resp.Code, resp.Msg)
 	}
 	metrics := make([]Metric, 0, len(resp.Data))
 	for _, row := range resp.Data {
@@ -223,7 +123,7 @@ func (s *OKXSource) Klines(ctx context.Context, asset Asset, interval string, li
 }
 
 func (s *OKXSource) get(ctx context.Context, path string) (json.RawMessage, error) {
-	return httpGet(ctx, s.Client, strings.TrimRight(s.BaseURL, "/")+path)
+	return httpGet(ctx, s.Client, s.limiter, strings.TrimRight(s.BaseURL, "/")+path)
 }
 
 type okxTickerResponse struct {
@@ -241,50 +141,58 @@ type okxTicker struct {
 	VolCcy24h string `json:"volCcy24h"`
 }
 
-func httpGet(ctx context.Context, client *http.Client, url string) (json.RawMessage, error) {
+// httpGet 发送 GET 请求，先经全局限速器，再对网络错误、429 与 5xx 做有限次指数退避重试。
+func httpGet(ctx context.Context, client *http.Client, limiter *rate.Limiter, url string) (json.RawMessage, error) {
 	if client == nil {
-		client = http.DefaultClient
+		client = newHTTPClient()
 	}
+	var lastErr error
+	for attempt := 0; attempt <= defaultHTTPRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * defaultRetryBackoff):
+			}
+		}
+		if limiter != nil {
+			if err := limiter.Wait(ctx); err != nil {
+				return nil, err
+			}
+		}
+		b, status, err := doGet(ctx, client, url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if status == http.StatusTooManyRequests || status >= 500 {
+			lastErr = fmt.Errorf("HTTP %d: %s", status, string(b))
+			continue
+		}
+		if status < 200 || status >= 300 {
+			return nil, fmt.Errorf("HTTP %d: %s", status, string(b))
+		}
+		return b, nil
+	}
+	return nil, lastErr
+}
+
+func doGet(ctx context.Context, client *http.Client, url string) (json.RawMessage, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("User-Agent", "find-assets/crypto-scanner")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, resp.StatusCode, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
-	}
-	return b, nil
-}
-
-func parseBinanceKlines(raw json.RawMessage) ([]model.Kline, error) {
-	var rows [][]any
-	if err := json.Unmarshal(raw, &rows); err != nil {
-		return nil, err
-	}
-	out := make([]model.Kline, 0, len(rows))
-	for _, row := range rows {
-		if len(row) < 6 {
-			continue
-		}
-		out = append(out, model.Kline{
-			Date:   time.UnixMilli(int64(row[0].(float64))),
-			Open:   parseAnyFloat(row[1]),
-			High:   parseAnyFloat(row[2]),
-			Low:    parseAnyFloat(row[3]),
-			Close:  parseAnyFloat(row[4]),
-			Volume: int64(parseAnyFloat(row[5])),
-		})
-	}
-	return out, nil
+	return b, resp.StatusCode, nil
 }
 
 func parseOKXKlines(raw json.RawMessage) ([]model.Kline, error) {

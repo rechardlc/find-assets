@@ -141,10 +141,10 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	if dir == Overbought {
 		dirLabel = "超涨拐点"
 	}
-	ageLabel := "新股"
+	ageLabel := "新币"
 	if isOld {
 		snap.EMA120 = ema120[last]
-		ageLabel = "老股"
+		ageLabel = "老币"
 	}
 	tag := fmt.Sprintf("[%s·%s·%s]", intervalLabel(opt.Interval), dirLabel, ageLabel)
 

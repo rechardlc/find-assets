@@ -13,17 +13,17 @@ func TestPreparePoolCacheAtReusesTodayAndRemovesOldPoolCaches(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldPath := filepath.Join(oldDir, "hot_alt_20000101_binance.json")
+	oldPath := filepath.Join(oldDir, "hot_alt_20000101_okx.json")
 	if err := os.WriteFile(oldPath, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	todayPath := TodayPoolCachePathAt(dir, "hot_alt", "binance")
+	todayPath := TodayPoolCachePathAt(dir, "hot_alt", "okx")
 	if err := os.WriteFile(todayPath, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	got, use, err := PreparePoolCacheAt(dir, "hot_alt", "binance")
+	got, use, err := PreparePoolCacheAt(dir, "hot_alt", "okx")
 	if err != nil {
 		t.Fatal(err)
 	}

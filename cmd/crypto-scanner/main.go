@@ -22,26 +22,29 @@ import (
 )
 
 type config struct {
-	source      string
-	pool        string
-	top         int
-	intervals   []crypto.IntervalSpec
-	bars        int
-	workers     int
-	schedule    bool
-	delay       time.Duration
-	exportArg   string
-	outDir      string
-	mail        bool
-	mailTo      string
-	mailFrom    string
-	smtpHost    string
-	smtpPort    int
-	smtpUser    string
-	smtpPass    string
-	envFile     string
-	custom      bool
-	customFile  string
+	source          string
+	pool            string
+	top             int
+	intervals       []crypto.IntervalSpec
+	pierceIntervals []crypto.IntervalSpec
+	bars            int
+	workers         int
+	schedule        bool
+	delay           time.Duration
+	exportArg       string
+	outDir          string
+	mail            bool
+	mailTo          string
+	mailFrom        string
+	smtpHost        string
+	smtpPort        int
+	smtpUser        string
+	smtpPass        string
+	envFile         string
+	custom          bool
+	customFile      string
+	scanOnStart     bool
+	rate            float64
 }
 
 func main() {
@@ -53,13 +56,28 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	src, err := buildSource(cfg.source, cfg.top)
+	src, err := buildSource(cfg.source, cfg.top, cfg.rate)
 	if err != nil {
 		log.Fatal(err)
 	}
 	svc := crypto.NewService(src)
 
+	reversalSet := specNameSet(cfg.intervals)
+	pierceSet := specNameSet(cfg.pierceIntervals)
+	allSpecs := unionSpecs(cfg.intervals, cfg.pierceIntervals)
+
 	runInterval := func(interval string) {
+		strategies := make([]string, 0, 2)
+		if reversalSet[interval] {
+			strategies = append(strategies, crypto.StrategyReversal)
+		}
+		if pierceSet[interval] {
+			strategies = append(strategies, crypto.StrategyPierce)
+		}
+		if len(strategies) == 0 {
+			return
+		}
+
 		var assets []crypto.Asset
 		var err error
 		if cfg.custom {
@@ -71,38 +89,53 @@ func main() {
 			log.Printf("[%s] 合约池准备失败: %v", interval, err)
 			return
 		}
-		rep, err := svc.RunReversal(ctx, crypto.ScanJob{
+
+		reps, err := svc.RunScan(ctx, crypto.ScanJob{
 			Interval:  interval,
 			BarsLimit: cfg.bars,
 			Workers:   cfg.workers,
 			Assets:    assets,
-		})
+		}, strategies)
 		if err != nil {
 			log.Printf("[%s] 扫描失败: %v", interval, err)
 			return
 		}
-		if rep == nil {
+
+		if reversalSet[interval] && reps[crypto.StrategyReversal] == nil {
 			opt := reversal.DefaultOptions(interval)
-			log.Printf("[%s] K 线根数不足（需要至少 %d 根），跳过本周期", interval, reversal.MinRequiredBars(opt))
-			return
+			log.Printf("[%s] K 线根数不足（需要至少 %d 根），跳过拐点", interval, reversal.MinRequiredBars(opt))
 		}
-		label := "crypto_" + interval + "_reversal"
-		if err := dispatchExports(rep, splitFormats(cfg.exportArg), cfg.outDir, label); err != nil {
-			log.Printf("[%s] 导出失败: %v", interval, err)
-		}
-		if err := maybeSendMail(cfg, rep); err != nil {
-			log.Printf("[%s] 邮件通知失败: %v", interval, err)
+
+		for _, stratName := range []string{crypto.StrategyReversal, crypto.StrategyPierce} {
+			rep := reps[stratName]
+			if rep == nil {
+				continue
+			}
+			label := "crypto_" + interval + "_" + stratName
+			if err := dispatchExports(rep, splitFormats(cfg.exportArg), cfg.outDir, label); err != nil {
+				log.Printf("[%s] 导出失败: %v", interval, err)
+			}
+			if err := maybeSendMail(cfg, rep); err != nil {
+				log.Printf("[%s] 邮件通知失败: %v", interval, err)
+			}
 		}
 	}
 
 	if !cfg.schedule {
-		for _, spec := range cfg.intervals {
+		for _, spec := range allSpecs {
 			runInterval(spec.Name)
 		}
 		return
 	}
 
-	next := crypto.InitSchedule(time.Now(), cfg.intervals, cfg.delay)
+	if cfg.scanOnStart {
+		fmt.Println("启动即扫描一轮...")
+		for _, spec := range allSpecs {
+			runInterval(spec.Name)
+		}
+	}
+
+	next := crypto.InitSchedule(time.Now(), allSpecs, cfg.delay)
 	for {
 		wakeAt := crypto.EarliestNext(next)
 		fmt.Printf("下一次扫描时间: %s\n", wakeAt.Format("2006-01-02 15:04:05"))
@@ -125,7 +158,7 @@ func main() {
 
 		for _, name := range due {
 			runInterval(name)
-			spec, ok := crypto.SpecByName(cfg.intervals, name)
+			spec, ok := crypto.SpecByName(allSpecs, name)
 			if !ok {
 				continue
 			}
@@ -154,10 +187,12 @@ func parseConfig(args []string) (config, error) {
 	fs := flag.NewFlagSet("crypto-scanner", flag.ContinueOnError)
 	cfg := config{envFile: envFile}
 	var intervalsArg string
-	fs.StringVar(&cfg.source, "source", "binance,okx", "数据源回退顺序：binance,okx")
+	var pierceIntervalsArg string
+	fs.StringVar(&cfg.source, "source", "okx", "数字货币数据源（当前仅支持 okx）")
 	fs.StringVar(&cfg.pool, "pool", "hot_alt", "合约池：hot_alt")
-	fs.IntVar(&cfg.top, "top", 20, "每日缓存的候选合约数量")
-	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "K 线周期列表，逗号分隔：15m,1h,4h")
+	fs.IntVar(&cfg.top, "top", 200, "每日缓存的候选合约数量")
+	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "拐点策略 K 线周期列表，逗号分隔：15m,1h,4h")
+	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "1h,4h", "一箭穿心策略 K 线周期列表，逗号分隔；留空则关闭一箭穿心")
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
 	fs.BoolVar(&cfg.schedule, "schedule", true, "按 K 线周期持续扫描；如需单次扫描可传 -schedule=false")
@@ -174,6 +209,8 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&cfg.envFile, "env", envFile, "环境变量文件路径；默认读取 .env")
 	fs.BoolVar(&cfg.custom, "custom", false, "读取本地自定义数字货币列表；默认关闭")
 	fs.StringVar(&cfg.customFile, "custom-file", defaultCustomFile, "本地自定义数字货币列表文件；一行一个交易对")
+	fs.BoolVar(&cfg.scanOnStart, "scan-on-start", true, "定时模式下启动即先扫描一轮")
+	fs.Float64Var(&cfg.rate, "rate", 15, "OKX 请求全局限速（次/秒）；<=0 表示不限速")
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
 	}
@@ -183,7 +220,40 @@ func parseConfig(args []string) (config, error) {
 		return config{}, err
 	}
 	cfg.intervals = intervals
+
+	if strings.TrimSpace(pierceIntervalsArg) != "" {
+		pierceIntervals, err := crypto.ParseIntervalList(pierceIntervalsArg)
+		if err != nil {
+			return config{}, err
+		}
+		cfg.pierceIntervals = pierceIntervals
+	}
 	return cfg, nil
+}
+
+// specNameSet 返回周期名集合，便于按名判断某周期是否启用某策略。
+func specNameSet(specs []crypto.IntervalSpec) map[string]bool {
+	set := make(map[string]bool, len(specs))
+	for _, s := range specs {
+		set[s.Name] = true
+	}
+	return set
+}
+
+// unionSpecs 合并两组周期（按名去重），用于统一的调度时间表。
+func unionSpecs(groups ...[]crypto.IntervalSpec) []crypto.IntervalSpec {
+	seen := make(map[string]bool)
+	out := make([]crypto.IntervalSpec, 0)
+	for _, g := range groups {
+		for _, s := range g {
+			if seen[s.Name] {
+				continue
+			}
+			seen[s.Name] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func maybeSendMail(cfg config, rep *exporter.Report) error {
@@ -205,20 +275,15 @@ func maybeSendMail(cfg config, rep *exporter.Report) error {
 	return err
 }
 
-func buildSource(spec string, top int) (crypto.Source, error) {
-	parts := strings.Split(strings.ToLower(strings.TrimSpace(spec)), ",")
-	sources := make([]crypto.Source, 0, len(parts))
-	for _, part := range parts {
+func buildSource(spec string, top int, ratePerSec float64) (crypto.Source, error) {
+	for _, part := range strings.Split(strings.ToLower(strings.TrimSpace(spec)), ",") {
 		switch strings.TrimSpace(part) {
-		case "", "binance":
-			sources = append(sources, crypto.NewBinanceSource(top))
-		case "okx":
-			sources = append(sources, crypto.NewOKXSource(top))
+		case "", "okx":
 		default:
-			return nil, fmt.Errorf("未知数字货币数据源: %s", part)
+			return nil, fmt.Errorf("未知数字货币数据源: %s（当前仅支持 okx）", part)
 		}
 	}
-	return crypto.NewCompositeSource(sources...)
+	return crypto.NewOKXSourceWithRate(top, ratePerSec), nil
 }
 
 func loadOrBuildPool(ctx context.Context, src crypto.Source, pool string, top int) ([]crypto.Asset, error) {
@@ -226,14 +291,12 @@ func loadOrBuildPool(ctx context.Context, src crypto.Source, pool string, top in
 	if err != nil {
 		return nil, err
 	}
-	for _, exchange := range strings.Split(src.Name(), ",") {
-		path, useCache, err := crypto.PreparePoolCacheAt(baseDir, pool, exchange)
-		if err != nil {
-			return nil, err
-		}
-		if !useCache {
-			continue
-		}
+	exchange := src.Name()
+	path, useCache, err := crypto.PreparePoolCacheAt(baseDir, pool, exchange)
+	if err != nil {
+		return nil, err
+	}
+	if useCache {
 		cache, err := crypto.LoadPoolCache(path)
 		if err != nil {
 			return nil, err
@@ -243,14 +306,6 @@ func loadOrBuildPool(ctx context.Context, src crypto.Source, pool string, top in
 	}
 
 	assets, err := src.ListAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-	exchange := src.Name()
-	if strings.Contains(exchange, ",") {
-		exchange = "unknown"
-	}
-	path, _, err := crypto.PreparePoolCacheAt(baseDir, pool, exchange)
 	if err != nil {
 		return nil, err
 	}

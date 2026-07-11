@@ -24,7 +24,7 @@ A 股常用组合：
 - 前复权日线数据，本地合成周线
 - 并发扫描（默认 100 协程），单次全量约 15 秒内
 - 结果导出：控制台 / JSON / Markdown
-- 数字货币：Binance 优先、OKX 回退，扫描 USDT 永续热门山寨合约池
+- 数字货币：OKX 数据源，扫描 USDT 永续热门山寨合约池；拐点 + 一箭穿心双策略
 - 数字货币：每日首次生成本地合约池缓存，15m K 线收盘后延迟扫描
 
 ## 快速开始
@@ -129,11 +129,11 @@ SOLUSDT
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `-source` | binance,okx | 数据源回退顺序 |
+| `-source` | okx | 数字货币数据源（当前仅支持 okx） |
 | `-pool` | hot_alt | 合约池规则，当前支持热门山寨综合评分 |
-| `-top` | 20 | 每日缓存的候选合约数量 |
-| `-interval` | 15m | K 线周期 |
-| `-pattern` | reversal | 策略形态 |
+| `-top` | 200 | 每日缓存的候选合约数量 |
+| `-intervals` | 15m,1h,4h | 拐点策略 K 线周期列表 |
+| `-pierce-intervals` | 1h,4h | 一箭穿心策略 K 线周期列表；留空关闭 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
 | `-schedule` | true | 是否按周期持续扫描；单次扫描可传 `-schedule=false` |
@@ -150,6 +150,8 @@ SOLUSDT
 | `-env` | .env | 环境变量文件路径 |
 | `-custom` | false | 是否读取本地自定义数字货币列表 |
 | `-custom-file` | ./crypto_symbols.txt | 本地自定义数字货币列表文件，一行一个交易对 |
+| `-scan-on-start` | true | 定时模式下启动即先扫描一轮 |
+| `-rate` | 15 | OKX 请求全局限速（次/秒），`<=0` 不限速 |
 
 ## 项目结构
 
@@ -159,7 +161,7 @@ find-assets/
 ├── cmd/crypto-scanner/   # 数字货币 USDT 永续合约入口
 ├── internal/
 │   ├── source/           # 数据源（东方财富）
-│   ├── crypto/           # Binance/OKX 合约池、缓存、调度、扫描编排
+│   ├── crypto/           # OKX 合约池、缓存、调度、扫描编排
 │   ├── aggregator/       # 日→周 K 线合成
 │   ├── indicator/        # EMA 等指标
 │   ├── strategy/         # 选股策略：周期(period) × 形态(pattern)
@@ -179,13 +181,13 @@ find-assets/
 | [技术方案](doc/技术方案.md) | 架构设计、模块说明、算法与数据流 |
 | [API 接口](doc/API接口.md) | HTTP REST API 说明 |
 | [运维部署](doc/运维部署.md) | GCP 本机打包 + 网页 SSH 运维（crypto-scanner） |
-| [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | Binance/OKX、hot_alt 合约池、缓存与 15m 调度 |
+| [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | OKX、hot_alt 合约池、缓存与 15m 调度 |
 
 ## 技术栈
 
 - **语言**：Go 1.25+
 - **HTTP 框架**：Gin
-- **数据源**：东方财富 push2 接口（前复权）、Binance Futures、OKX Public API
+- **数据源**：东方财富 push2 接口（前复权）、OKX Public API
 - **依赖**：仅 `gin`、`uuid`，其余为标准库
 
 ## License

@@ -31,7 +31,7 @@ func TestMapIntervalForExchangeOKX(t *testing.T) {
 	if got := MapIntervalForExchange("okx", "4h"); got != "4H" {
 		t.Fatalf("expected 4H, got %q", got)
 	}
-	if got := MapIntervalForExchange("binance", "1h"); got != "1h" {
-		t.Fatalf("expected 1h, got %q", got)
+	if got := MapIntervalForExchange("okx", "15m"); got != "15m" {
+		t.Fatalf("expected 15m passthrough, got %q", got)
 	}
 }

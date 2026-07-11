@@ -92,6 +92,46 @@ func TestServiceRunBuildsReport(t *testing.T) {
 	}
 }
 
+func TestRunScanRunsBothStrategies(t *testing.T) {
+	src := fakeSource{
+		assets: []Asset{{Symbol: "PEPEUSDT"}},
+		klines: makeFlatKlines(300),
+	}
+	reps, err := NewService(src).RunScan(context.Background(), ScanJob{
+		Interval:  "1h",
+		BarsLimit: 300,
+	}, []string{StrategyReversal, StrategyPierce})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reps[StrategyReversal] == nil || reps[StrategyPierce] == nil {
+		t.Fatalf("expected both reports, got %+v", reps)
+	}
+	if reps[StrategyPierce].Pattern != "pierce" || reps[StrategyPierce].Mode != "1h:pierce" {
+		t.Fatalf("unexpected pierce report: %+v", reps[StrategyPierce])
+	}
+	if reps[StrategyPierce].Title != "1小时一箭穿心" {
+		t.Fatalf("unexpected pierce title: %q", reps[StrategyPierce].Title)
+	}
+}
+
+func TestRunScanSkipsPierceWhenBarsInsufficient(t *testing.T) {
+	src := fakeSource{
+		assets: []Asset{{Symbol: "X"}},
+		klines: makeFlatKlines(100),
+	}
+	reps, err := NewService(src).RunScan(context.Background(), ScanJob{
+		Interval:  "1h",
+		BarsLimit: 100,
+	}, []string{StrategyPierce})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reps[StrategyPierce] != nil {
+		t.Fatalf("expected pierce skipped when bars insufficient, got %+v", reps[StrategyPierce])
+	}
+}
+
 func makeFlatKlines(n int) []model.Kline {
 	out := make([]model.Kline, n)
 	start := time.Date(2026, 6, 17, 0, 0, 0, 0, time.UTC)

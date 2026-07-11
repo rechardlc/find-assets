@@ -22,5 +22,6 @@ type Result struct {
 	Name     string   `json:"name"`
 	Tag      string   `json:"tag"`
 	Metric   string   `json:"metric,omitempty"`
+	Alert    bool     `json:"alert,omitempty"` // 特殊标记（如数字货币一箭穿心的强多头信号），用于邮件高亮
 	Snapshot Snapshot `json:"snapshot"`
 }

@@ -13,7 +13,11 @@ func (Console) ContentType() string { return "text/plain; charset=utf-8" }
 func (Console) Write(w io.Writer, r *Report) error {
 	fmt.Fprintln(w, "================ 筛选完成 ================")
 	for _, it := range r.Results {
-		fmt.Fprintf(w, "%s %s\n", it.Code, it.Name)
+		if it.Tag != "" {
+			fmt.Fprintf(w, "%s %s %s\n", it.Code, it.Name, it.Tag)
+		} else {
+			fmt.Fprintf(w, "%s %s\n", it.Code, it.Name)
+		}
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "符合条件的标的共计: %d 个。 耗时: %s\n", r.Matched, r.Elapsed)

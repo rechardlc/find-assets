@@ -25,10 +25,10 @@ func (Markdown) Write(w io.Writer, r *Report) error {
 
 	fmt.Fprintln(w, "## 命中清单")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "| # | 代码 | 名称 |")
-	fmt.Fprintln(w, "|---|---|---|")
+	fmt.Fprintln(w, "| # | 代码 | 名称 | 标签 |")
+	fmt.Fprintln(w, "|---|---|---|---|")
 	for i, it := range r.Results {
-		fmt.Fprintf(w, "| %d | `%s` | %s |\n", i+1, it.Code, it.Name)
+		fmt.Fprintf(w, "| %d | `%s` | %s | %s |\n", i+1, it.Code, it.Name, it.Tag)
 	}
 	return nil
 }

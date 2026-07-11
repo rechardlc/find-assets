@@ -26,7 +26,15 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 
 	fmt.Fprintln(w, "命中清单")
 	for i, it := range rep.Results {
-		fmt.Fprintf(w, "  %2d. %-12s  %s\n", i+1, it.Code, it.Name)
+		marker := "  "
+		if it.Alert {
+			marker = "★ "
+		}
+		fmt.Fprintf(w, "  %2d. %s%-12s  %-24s  %s\n", i+1, marker, it.Code, it.Name, it.Tag)
+	}
+	if reportHasAlert(rep) {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "★ 标记为强多头信号（上穿快中线簇且 EMA120 位于最低价下方）。")
 	}
 	fmt.Fprintln(w)
 
@@ -37,6 +45,16 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 	fmt.Fprintf(w, "命中数：%d\n", rep.Matched)
 	fmt.Fprintf(w, "耗时：%s\n", rep.Elapsed)
 	return nil
+}
+
+// reportHasAlert 判断报告中是否存在特殊标记（强多头）命中。
+func reportHasAlert(rep *exporter.Report) bool {
+	for _, it := range rep.Results {
+		if it.Alert {
+			return true
+		}
+	}
+	return false
 }
 
 func serverZoneLabel(t time.Time) string {
