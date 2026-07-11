@@ -22,6 +22,16 @@ func TodayPoolCachePathAt(baseDir, pool, exchange string) string {
 	return filepath.Join(PoolCacheDirAt(baseDir), name)
 }
 
+// ClearTodayPoolCacheAt removes today's pool cache so the next Prepare/build
+// must refetch from the exchange. Used on process startup.
+func ClearTodayPoolCacheAt(baseDir, pool, exchange string) error {
+	path := TodayPoolCachePathAt(baseDir, pool, exchange)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func PreparePoolCacheAt(baseDir, pool, exchange string) (todayPath string, useCache bool, err error) {
 	cacheDir := PoolCacheDirAt(baseDir)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {

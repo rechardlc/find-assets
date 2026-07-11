@@ -60,6 +60,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if !cfg.custom {
+		if err := clearPoolCacheOnStart(cfg.pool, src.Name()); err != nil {
+			log.Fatal(err)
+		}
+	}
 	svc := crypto.NewService(src)
 
 	reversalSet := specNameSet(cfg.intervals)
@@ -284,6 +289,18 @@ func buildSource(spec string, top int, ratePerSec float64) (crypto.Source, error
 		}
 	}
 	return crypto.NewOKXSourceWithRate(top, ratePerSec), nil
+}
+
+func clearPoolCacheOnStart(pool, exchange string) error {
+	baseDir, err := stocksource.ExeDir()
+	if err != nil {
+		return err
+	}
+	if err := crypto.ClearTodayPoolCacheAt(baseDir, pool, exchange); err != nil {
+		return err
+	}
+	fmt.Println("启动时已清除当日合约池缓存，将重新拉取")
+	return nil
 }
 
 func loadOrBuildPool(ctx context.Context, src crypto.Source, pool string, top int) ([]crypto.Asset, error) {
