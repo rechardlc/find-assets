@@ -169,6 +169,11 @@ func (s *Service) buildActiveStrategies(job ScanJob, strategies []string) ([]act
 }
 
 func (s *Service) scan(ctx context.Context, assets []Asset, job ScanJob, active []activeStrategy) map[string][]model.Result {
+	spec, err := resolveInterval(job.Interval)
+	if err != nil {
+		return map[string][]model.Result{}
+	}
+
 	sem := make(chan struct{}, job.Workers)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -189,6 +194,10 @@ scanLoop:
 
 			klines, err := s.src.Klines(ctx, asset, job.Interval, job.BarsLimit)
 			if err != nil || len(klines) == 0 {
+				return
+			}
+			klines = DropFormingBar(klines, spec.Duration, time.Now())
+			if len(klines) == 0 {
 				return
 			}
 			stock := model.Stock{Code: asset.Symbol, Name: asset.Name}
