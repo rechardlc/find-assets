@@ -5,8 +5,8 @@
 //   - 判定「实体跨越」：被穿的均线夹在开盘价与收盘价之间（实体整体跨过这些线）
 //   - 需穿 EMA5/10/30/60/120 中任意 4 根；无 EMA120 的新币须穿满 EMA5/10/30/60，不足 4 根放弃
 //   - 上穿要求放量（当根成交量 > 前一根），下穿不要求
-//   - 不做均线粘合度过滤
-//   - 特殊标记：上穿且穿满 EMA5/10/30/60、EMA120 位于最低价下方 → 强多头信号（Alert）
+//   - 不做均线粘合度过滤，不考虑均线排列
+//   - 特殊标记：上穿且实体穿满全部均线（老币 5 条 EMA5/10/30/60/120，新币 4 条 EMA5/10/30/60）→ 强多头信号（Alert）
 package pierce
 
 import (
@@ -122,8 +122,12 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 		volInc = (float64(k.Volume) - float64(prev.Volume)) / float64(prev.Volume) * 100
 	}
 
-	// 特殊标记：上穿 + 老币 + 穿满 EMA5/10/30/60 + EMA120 位于最低价下方。
-	alert := dir == Up && isOld && crossedFast == 4 && ema120[last] < k.Low
+	// 特殊标记：上穿且实体穿满全部均线（老币 5 条，新币 4 条），不看 EMA120 位置、不看排列。
+	totalLines := 4
+	if isOld {
+		totalLines = 5
+	}
+	alert := dir == Up && crossed == totalLines
 
 	dirLabel := "上穿"
 	if dir == Down {

@@ -34,7 +34,7 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 	}
 	if reportHasAlert(rep) {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "★ 标记为强多头信号（上穿快中线簇且 EMA120 位于最低价下方）。")
+		fmt.Fprintln(w, "★ 标记为强多头信号（上穿且实体穿满全部均线：老币 5 条 / 新币 4 条）。")
 	}
 	fmt.Fprintln(w)
 

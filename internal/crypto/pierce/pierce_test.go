@@ -48,15 +48,15 @@ func setLast(bars []model.Kline, o, h, l, c float64, vol, prevVol int64) {
 	bars[n-1] = model.Kline{Date: bars[n-1].Date, Open: o, High: h, Low: l, Close: c, Volume: vol}
 }
 
-func TestEvalUpCrossesLines(t *testing.T) {
-	bars := flatBars(300, 100)
-	setLast(bars, 95, 115, 90, 110, 2000, 1000) // 阳线，实体 (95,110) 跨过全部 5 条均线
+func TestEvalUpCrossesFourNotAll(t *testing.T) {
+	bars := rampBars(300, 100, 1) // 稳定上行，EMA120 显著低于快中线簇
+	setLast(bars, 360, 400, 355, 399, 2000, 1000) // 实体 (360,399) 仅跨快中线簇，EMA120 在实体下方未被穿
 	r, ok := Eval(model.Stock{Code: "X"}, bars, Up, DefaultOptions("1h"))
 	if !ok {
 		t.Fatal("expected up-pierce hit")
 	}
 	if r.Alert {
-		t.Fatalf("did not expect alert, tag=%s", r.Tag)
+		t.Fatalf("crossed only 4 of 5 lines, should not be special alert, tag=%s", r.Tag)
 	}
 	if !strings.Contains(r.Tag, "上穿") || !strings.Contains(r.Tag, "老币") {
 		t.Fatalf("unexpected tag: %s", r.Tag)
@@ -95,14 +95,14 @@ func TestEvalDownIgnoresVolume(t *testing.T) {
 }
 
 func TestEvalUpSpecialAlert(t *testing.T) {
-	bars := rampBars(300, 100, 1) // 稳定上行，EMA120 远低于价格
-	setLast(bars, 360, 400, 355, 399, 2000, 1000)
+	bars := rampBars(300, 100, 1) // 稳定上行，EMA120 远低于快中线簇
+	setLast(bars, 320, 405, 315, 399, 2000, 1000) // 实体 (320,399) 穿满全部 5 条均线（含 EMA120）
 	r, ok := Eval(model.Stock{Code: "X"}, bars, Up, DefaultOptions("4h"))
 	if !ok {
 		t.Fatal("expected up-pierce hit")
 	}
 	if !r.Alert {
-		t.Fatalf("expected special alert, tag=%s", r.Tag)
+		t.Fatalf("expected special alert when all lines crossed, tag=%s", r.Tag)
 	}
 	if !strings.Contains(r.Tag, "★") {
 		t.Fatalf("alert tag should contain marker, got %s", r.Tag)
@@ -119,8 +119,8 @@ func TestEvalNewCoinUsesFourLines(t *testing.T) {
 	if !strings.Contains(r.Tag, "新币") {
 		t.Fatalf("expected 新币 tag, got %s", r.Tag)
 	}
-	if r.Alert {
-		t.Fatal("new coin has no EMA120, should not alert")
+	if !r.Alert {
+		t.Fatal("new coin crossing all 4 lines should be a special alert")
 	}
 }
 
