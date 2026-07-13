@@ -75,7 +75,11 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 		ema120 = indicator.EMA(closes, 120)
 	}
 
-	last := n - 1
+	// 末根为当前周期形成中的 K 线，判定对象取倒数第二根已收盘 K 线（len-2）。
+	last := n - 2
+	if last < 1 {
+		return model.Result{}, false
+	}
 	crossIdx := last - opt.CrossOffset
 	if crossIdx < 1 {
 		return model.Result{}, false

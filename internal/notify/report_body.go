@@ -34,7 +34,7 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 	}
 	if reportHasAlert(rep) {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "★ 标记为强多头信号（上穿且实体穿满全部均线：老币 5 条 / 新币 4 条）。")
+		fmt.Fprintln(w, "★ 标记为强势信号（穿满 5 根均线，或穿 4 根且 EMA120 位于强势一侧）。")
 	}
 	fmt.Fprintln(w)
 
@@ -47,7 +47,7 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 	return nil
 }
 
-// reportHasAlert 判断报告中是否存在特殊标记（强多头）命中。
+// reportHasAlert 判断报告中是否存在特殊标记（强势）命中。
 func reportHasAlert(rep *exporter.Report) bool {
 	for _, it := range rep.Results {
 		if it.Alert {

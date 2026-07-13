@@ -44,7 +44,7 @@ func BuildReportEmail(cfg Config, rep *exporter.Report) ([]byte, error) {
 	}
 	subject := fmt.Sprintf("命中提醒：%s 命中 %d 个", title, rep.Matched)
 	if reportHasAlert(rep) {
-		subject = "【强多头】" + subject
+		subject = "【强势】" + subject
 	}
 	var msg bytes.Buffer
 	fmt.Fprintf(&msg, "From: %s\r\n", from)
