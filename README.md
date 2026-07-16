@@ -1,31 +1,81 @@
 # 全市场多维度量化选股器
 
-一款面向个人投资者与量化交易员的**本地化、高并发、多策略**资产扫描工具。基于 Go 语言开发，A 股支持命令行（CLI）与 HTTP API（Gin）双模式运行，数字货币合约提供独立 CLI 入口，零运行时依赖，单文件即可部署。
+一款面向个人投资者与量化交易员的**本地化、高并发、多策略**资产扫描工具。基于 Go 语言开发：
+
+- **A 股**：`cmd/scanner` — CLI + HTTP API（Gin）双模式
+- **数字货币 USDT 永续**：`cmd/crypto-scanner` — 独立 CLI（多周期调度 + 邮件通知）
+
+零运行时依赖，单文件即可部署。两套入口共享 `indicator` / `exporter` / `model`，策略与数据源完全隔离。
 
 ## 功能概览
 
-策略由两个**正交维度**自由组合：**周期（period）** 决定指标算在哪种 K 线上，**形态（pattern）** 决定怎样才算命中。A 股与数字货币市场独立运行，公共复用 EMA、策略与导出能力。
+### A 股：周期 × 形态
 
 | 维度 | 取值 | 说明 |
 |------|------|------|
-| 周期 `-period` / `-interval` | `day` / `week` / `15m` | A 股日线 / 周线；数字货币 15 分钟 K 线 |
-| 形态 `-pattern` | `pierce` / `reversal` | 一箭穿心 / 超跌拐点 |
-
-A 股常用组合：
+| 周期 `-period` (`-p`) | `day` / `week` | 日线 / 周线（周线由日线本地合成） |
+| 形态 `-pattern` (`-pt`) | `pierce` / `reversal` | 一箭穿心 / 超跌拐点 |
 
 | 组合 | 含义 |
 |------|------|
-| `day` × `pierce` | 日线一箭穿心：均线高度粘合后，放量阳线穿透五条 EMA |
-| `week` × `reversal` | 周线超跌拐点：长期空头排列后，关键均线对近期交织 |
-| `week` × `pierce` | 周线一箭穿心（新组合） |
-| `day` × `reversal` | 日线超跌拐点（新组合） |
+| `day` × `pierce` | 日线一箭穿心（默认） |
+| `week` × `reversal` | 周线超跌拐点 |
+| `week` × `pierce` | 周线一箭穿心 |
+| `day` × `reversal` | 日线超跌拐点 |
 
 - 覆盖沪深主板、创业板、科创板（约 5000+ 只）
-- 前复权日线数据，本地合成周线
+- 数据源可回退：`auto` = 东财 → 新浪 → 腾讯；支持 `file:` 本地清单
+- 股票清单按日落盘到可执行文件旁 `stocks/`，同日复用
 - 并发扫描（默认 100 协程），单次全量约 15 秒内
 - 结果导出：控制台 / JSON / Markdown
-- 数字货币：OKX 数据源，扫描 USDT 永续热门山寨合约池；拐点 + 一箭穿心双策略
-- 数字货币：每次进程启动重新拉取合约池并写入本地缓存，15m K 线收盘后延迟扫描
+
+> 策略注册表里还有 `15m` 周期（恒等透传），但 A 股数据源只提供日线；HTTP API 仅接受 `day`/`week`。
+
+### 数字货币：周期 × 策略（独立实现）
+
+| 策略 | 默认周期 | 模块 |
+|------|----------|------|
+| 拐点 `reversal`（超跌 + 超涨） | `15m,1h,4h` | `internal/crypto/reversal` |
+| 一箭穿心 `pierce`（上穿 + 下穿） | `1h,4h` | `internal/crypto/pierce` |
+
+- OKX 单一数据源，`hot_alt` 热门山寨合约池（排除 BTC/ETH/稳定币）
+- **每次进程启动**清除当日合约池缓存并重新拉取；同日进程内后续扫描复用
+- 多周期边界对齐后延迟扫描（默认 `delay=20s`）；同周期 K 线只拉一次，两策略合并判定
+- 命中时按「周期 × 策略」独立发邮件（QQ SMTP）
+
+## 链路总览
+
+```text
+┌─ cmd/scanner (A 股) ─────────────────────────────────────────────┐
+│  CLI / HTTP(-serve)                                              │
+│       ↓                                                          │
+│  source.Composite (auto|em|sina|tencent|file) + stocks/ 日缓存   │
+│       ↓                                                          │
+│  service.ScanService.Run                                         │
+│       ↓                                                          │
+│  strategy.Get(period×pattern) → scanner.Run                      │
+│       ↓                          ↓                               │
+│  Period.Resample            Pattern.Eval                         │
+│  (day|week→aggregator)      (pierce|reversal → indicator.EMA)    │
+│       ↓                                                          │
+│  exporter (console/json/md)                                      │
+│  HTTP: Gin /api/v1/scans[+async] + SSE + export                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌─ cmd/crypto-scanner (USDT 永续) ─────────────────────────────────┐
+│  .env → parseConfig → OKX Source (限速+重试)                     │
+│       ↓                                                          │
+│  ClearTodayPoolCache → hot_alt 池 / 自定义列表                   │
+│       ↓                                                          │
+│  调度：InitSchedule(intervals ∪ pierce-intervals) + delay        │
+│       ↓                                                          │
+│  crypto.Service.RunScan(interval, [reversal?, pierce?])          │
+│       ↓              ↓                                           │
+│  crypto/reversal  crypto/pierce                                  │
+│       ↓                                                          │
+│  exporter + notify.SendReport（命中才发）                         │
+└──────────────────────────────────────────────────────────────────┘
+```
 
 ## 快速开始
 
@@ -43,22 +93,23 @@ go build -ldflags="-s -w" -o crypto-scanner.exe ./cmd/crypto-scanner
 
 ```powershell
 # 日线一箭穿心（默认粘合度 2%，放量 >3%）
-.\find-assets.exe -period=day -pattern=pierce
+.\find-assets.exe -p=day -pt=pierce
 
-# 日线一箭穿心，自定义粘合度阈值为 1.2%
+# 自定义粘合度；短选项与完整名等价
 .\find-assets.exe -period=day -pattern=pierce -range=1.2
 
-# 周线超跌拐点，并导出 JSON + Markdown
-.\find-assets.exe -period=week -pattern=reversal -export=json,md -out=./output
+# 周线超跌拐点，死叉后第 3 根触发；导出 JSON + Markdown
+.\find-assets.exe -p=week -pt=reversal -dc=3 -e=json,md -o=./output
 
-# 新组合：周线一箭穿心
-.\find-assets.exe -period=week -pattern=pierce
+# 指定数据源（默认 auto = em→sina→tencent）
+.\find-assets.exe -p=day -pt=pierce -so=em
 ```
 
 ### A 股 HTTP 服务模式
 
 ```powershell
-.\find-assets.exe -serve -addr=:8080
+.\find-assets.exe -s -a=:8080
+# 等价：-serve -addr=:8080
 ```
 
 ```bash
@@ -78,7 +129,7 @@ notepad .env
 
 `.env` 内容示例：
 
-```powershell
+```text
 FIND_ASSETS_SMTP_PASS=你的QQ邮箱授权码
 ```
 
@@ -89,10 +140,10 @@ $env:FIND_ASSETS_SMTP_PASS="你的QQ邮箱授权码"
 ```
 
 ```powershell
-# 默认定时扫描：命中时推送到 richard_0525@foxmail.com
+# 默认定时扫描：启动先扫一轮，再按 15m/1h/4h 边界持续跑；命中发邮件
 .\crypto-scanner.exe
 
-# 单次扫描
+# 单次扫描（并集周期各跑一轮后退出）
 .\crypto-scanner.exe -schedule=false
 
 # 导出 JSON + Markdown
@@ -112,18 +163,23 @@ SOLUSDT
 
 ## A 股命令行参数
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `-period` | day | K 线周期：`day` / `week`（CLI 必填） |
-| `-pattern` | pierce | 选股形态：`pierce` / `reversal`（CLI 必填） |
-| `-workers` | 100 | 最大并发数 |
-| `-bars` | 600 | 拉取日线根数 |
-| `-range` | 2 | `pierce` 形态粘合度阈值（百分比，2 = 2%） |
-| `-volume` | 3 | `pierce` 形态放量阈值（百分比，3 = 较前一根成交量增加 >3%） |
-| `-export` | console | 导出格式：`console,json,md` |
-| `-out` | ./output | 文件导出目录 |
-| `-serve` | false | 启动 HTTP 服务 |
-| `-addr` | :8080 | HTTP 监听地址 |
+| 参数（简写） | 默认值 | 说明 |
+|--------------|--------|------|
+| `-period` (`-p`) | day | K 线周期：`day` / `week` |
+| `-pattern` (`-pt`) | pierce | 选股形态：`pierce` / `reversal` |
+| `-workers` (`-w`) | 100 | 最大并发数 |
+| `-bars` (`-b`) | 600 | 拉取日线根数 |
+| `-range` (`-r`) | 2 | `pierce` 粘合度阈值（百分比，2 = 2%） |
+| `-volume` (`-v`) | 3 | `pierce` 放量阈值（百分比，3 = 较前一根成交量增加 >3%） |
+| `-deadcross` (`-dc`) | 3 | `reversal` 死叉后第几根 K 线触发 |
+| `-export` (`-e`) | console | 导出格式：`console,json,md` |
+| `-out` (`-o`) | ./output | 文件导出目录 |
+| `-serve` (`-s`) | false | 启动 HTTP 服务 |
+| `-addr` (`-a`) | :8080 | HTTP 监听地址 |
+| `-source` (`-so`) | auto | 数据源：`auto` / `em` / `sina` / `tencent` / `file:./path.json`，可逗号串联回退 |
+| `-help` (`-h`) | false | 显示帮助 |
+
+CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 
 ## 数字货币命令行参数
 
@@ -136,7 +192,7 @@ SOLUSDT
 | `-pierce-intervals` | 1h,4h | 一箭穿心策略 K 线周期列表；留空关闭 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
-| `-schedule` | true | 是否按周期持续扫描；单次扫描可传 `-schedule=false` |
+| `-schedule` | true | 是否按周期持续扫描；单次扫描传 `-schedule=false` |
 | `-delay` | 20s | K 线收盘后的延迟执行时间 |
 | `-export` | console | 导出格式：`console,json,md` |
 | `-out` | ./output | 文件导出目录 |
@@ -149,7 +205,7 @@ SOLUSDT
 | `-smtp-pass` | 环境变量 `FIND_ASSETS_SMTP_PASS` | SMTP 授权码 |
 | `-env` | .env | 环境变量文件路径 |
 | `-custom` | false | 是否读取本地自定义数字货币列表 |
-| `-custom-file` | ./crypto_symbols.txt | 本地自定义数字货币列表文件，一行一个交易对 |
+| `-custom-file` | ./crypto_symbols.txt | 本地自定义列表，一行一个交易对 |
 | `-scan-on-start` | true | 定时模式下启动即先扫描一轮 |
 | `-rate` | 15 | OKX 请求全局限速（次/秒），`<=0` 不限速 |
 
@@ -157,20 +213,35 @@ SOLUSDT
 
 ```
 find-assets/
-├── cmd/scanner/          # A 股入口（CLI + HTTP 双模式）
-├── cmd/crypto-scanner/   # 数字货币 USDT 永续合约入口
+├── cmd/
+│   ├── scanner/              # A 股入口（CLI + HTTP）
+│   │   ├── main.go
+│   │   └── flags.go          # 短选项展开（-p/-pt/-so/-dc …）
+│   └── crypto-scanner/       # 数字货币 USDT 永续入口
+│       ├── main.go           # 调度、导出、邮件
+│       ├── env.go            # .env 加载
+│       └── custom.go         # 自定义交易对列表
 ├── internal/
-│   ├── source/           # 数据源（东方财富）
-│   ├── crypto/           # OKX 合约池、缓存、调度、扫描编排
-│   ├── aggregator/       # 日→周 K 线合成
-│   ├── indicator/        # EMA 等指标
-│   ├── strategy/         # 选股策略：周期(period) × 形态(pattern)
-│   ├── scanner/          # 并发扫描器
-│   ├── service/          # 业务编排层
-│   ├── server/           # Gin HTTP 服务
-│   └── exporter/         # 结果导出
-├── doc/                  # 项目文档
-└── output/               # 导出结果（运行时生成）
+│   ├── model/                # Stock / Kline / Result
+│   ├── source/               # A 股：Composite + 东财/新浪/腾讯/文件 + 清单缓存
+│   ├── aggregator/           # 日 → 周 K 线合成
+│   ├── indicator/            # EMA、金叉/死叉判定（两市场共用）
+│   ├── strategy/             # A 股：period × pattern（pierce / reversal）
+│   ├── scanner/              # A 股并发扫描器
+│   ├── service/              # A 股 ScanService 编排
+│   ├── server/               # Gin HTTP（仅 A 股）
+│   ├── exporter/             # console / json / md
+│   ├── notify/               # SMTP 邮件（仅 crypto-scanner 接入）
+│   └── crypto/               # 数字货币编排
+│       ├── reversal/         # 专用拐点（超跌/超涨）
+│       ├── pierce/           # 专用一箭穿心（上穿/下穿）
+│       ├── pool.go           # hot_alt 评分
+│       ├── cache.go          # 合约池日缓存
+│       ├── scheduler.go      # 多周期延迟调度
+│       ├── exchange.go       # OKX REST
+│       └── service.go        # RunScan 合并编排
+├── doc/                      # 项目文档
+└── output/                   # 导出结果（运行时生成）
 ```
 
 ## 文档
@@ -178,17 +249,17 @@ find-assets/
 | 文档 | 说明 |
 |------|------|
 | [项目规划](doc/项目规划.md) | 背景、目标、功能需求、里程碑 |
-| [技术方案](doc/技术方案.md) | 架构设计、模块说明、算法与数据流 |
-| [API 接口](doc/API接口.md) | HTTP REST API 说明 |
+| [技术方案](doc/技术方案.md) | A 股架构、模块与数据流（crypto 见专文） |
+| [API 接口](doc/API接口.md) | A 股 HTTP REST API |
 | [运维部署](doc/运维部署.md) | GCP 本机打包 + 网页 SSH 运维（crypto-scanner） |
-| [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | OKX、hot_alt 合约池、缓存与 15m 调度 |
+| [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | OKX、hot_alt、双策略、调度与邮件 |
 
 ## 技术栈
 
 - **语言**：Go 1.25+
-- **HTTP 框架**：Gin
-- **数据源**：东方财富 push2 接口（前复权）、OKX Public API
-- **依赖**：仅 `gin`、`uuid`，其余为标准库
+- **HTTP 框架**：Gin（仅 A 股）
+- **数据源**：东财 / 新浪 / 腾讯（A 股，可回退）；OKX Public API（数字货币）
+- **依赖**：`gin`、`uuid`、`golang.org/x/time`（OKX 限速），其余为标准库
 
 ## License
 

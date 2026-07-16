@@ -1,8 +1,13 @@
 # API 接口文档
 
-HTTP 服务通过 A 股扫描器 `find-assets.exe -serve -addr=:8080` 启动，基础路径为 `/api/v1`。
+HTTP 服务通过 A 股扫描器启动，基础路径为 `/api/v1`：
 
-> 当前 HTTP API 面向 A 股扫描任务。数字货币 USDT 永续合约扫描器使用独立 CLI：`crypto-scanner.exe`，默认同时监听 `15m,1h,4h` 三个周期，详见 [数字货币合约扫描器设计](数字货币合约扫描器设计.md)。
+```powershell
+.\find-assets.exe -s -a=:8080
+# 等价：-serve -addr=:8080
+```
+
+> 当前 HTTP API **仅面向 A 股**。数字货币使用独立 CLI `crypto-scanner.exe`（无 HTTP），默认拐点 `15m,1h,4h` + 一箭穿心 `1h,4h`，详见 [数字货币合约扫描器设计](数字货币合约扫描器设计.md)。
 
 ## 通用说明
 
@@ -10,6 +15,7 @@ HTTP 服务通过 A 股扫描器 `find-assets.exe -serve -addr=:8080` 启动，�
 - 跨域：默认允许 `*`（开发联调用）
 - 扫描限流：同一时刻仅允许 **1 个**扫描任务运行
 - 市场范围：A 股（沪深主板、创业板、科创板）
+- 数据源：由启动时 `-source` 决定（默认 `auto` = 东财→新浪→腾讯）；HTTP 请求体不指定数据源
 
 ---
 
@@ -33,13 +39,16 @@ GET /api/v1/health
 GET /api/v1/strategies
 ```
 
-策略由「周期 × 形态」两个正交维度组合而成。响应同时给出 HTTP A 股入口支持的两个维度取值与全部组合。
+策略由「周期 × 形态」正交组合。接口枚举 `strategy` 包注册表中的全部周期与形态。
 
-**响应**：
+> **注意**：注册表含 `15m`（恒等透传，供扩展），故本接口可能返回 6 组组合。但创建扫描时 `period` 的 binding 仅允许 `day` / `week`；传入 `15m` 会 `400`。A 股数据源只提供日线，请勿对 A 股使用 `15m`。
+
+**响应示例**（实用组合；实际还可能含 `15m:*`）：
 
 ```json
 {
   "periods": [
+    { "name": "15m", "label": "15分钟" },
     { "name": "day", "label": "日线" },
     { "name": "week", "label": "周线" }
   ],
@@ -74,7 +83,8 @@ POST /api/v1/scans
   "pattern": "pierce",
   "workers": 100,
   "range": 2,
-  "volume": 20,
+  "volume": 3,
+  "dead_cross": 3,
   "bars_limit": 600
 }
 ```
@@ -86,6 +96,7 @@ POST /api/v1/scans
 | workers | int | 否 | 并发数，默认 100 |
 | range | float | 否 | `pierce` 粘合度阈值（百分比，2 = 2%），默认 2 |
 | volume | float | 否 | `pierce` 放量阈值（百分比，3 = 较前一根成交量增加 >3%），默认 3 |
+| dead_cross | int | 否 | `reversal` 死叉后第几根 K 线触发，默认 3 |
 | bars_limit | int | 否 | 拉取日线根数，默认 600 |
 
 **响应**（200）：
@@ -247,10 +258,10 @@ curl -X POST http://localhost:8080/api/v1/scans \
   -H "Content-Type: application/json" \
   -d '{"period":"week","pattern":"pierce"}'
 
-# 异步扫描 + 轮询：周线超跌拐点
+# 异步扫描 + 轮询：周线超跌拐点（可调 dead_cross）
 TASK=$(curl -s -X POST http://localhost:8080/api/v1/scans/async \
   -H "Content-Type: application/json" \
-  -d '{"period":"week","pattern":"reversal"}' | jq -r .task_id)
+  -d '{"period":"week","pattern":"reversal","dead_cross":3}' | jq -r .task_id)
 
 curl http://localhost:8080/api/v1/scans/$TASK
 
