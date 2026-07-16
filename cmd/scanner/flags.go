@@ -25,6 +25,9 @@ var knownLongFlags = map[string]bool{
 	"period": true, "pattern": true, "workers": true, "bars": true,
 	"range": true, "volume": true, "export": true, "out": true,
 	"serve": true, "addr": true, "source": true, "deadcross": true, "help": true,
+	"mail": true, "mail-to": true, "mail-from": true,
+	"smtp-host": true, "smtp-port": true, "smtp-user": true, "smtp-pass": true,
+	"env": true,
 }
 
 // expandShortFlags 把 argv 中的短选项展开为完整 flag 名，供 flag.Parse 使用。
@@ -83,5 +86,5 @@ func resolveFlagName(name string) string {
 }
 
 func isBoolFlag(name string) bool {
-	return name == "serve" || name == "help"
+	return name == "serve" || name == "help" || name == "mail"
 }

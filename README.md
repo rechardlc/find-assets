@@ -28,6 +28,8 @@
 - 股票清单按日落盘到可执行文件旁 `stocks/`，同日复用
 - 并发扫描（默认 100 协程），单次全量约 15 秒内
 - 结果导出：控制台 / JSON / Markdown
+- 命中可发邮件（`-mail`，同 crypto 的 SMTP / `.env`）
+- 定时批跑：`scripts/ashare/` + cron（固定日程，不考虑节假日）
 
 > 策略注册表里还有 `15m` 周期（恒等透传），但 A 股数据源只提供日线；HTTP API 仅接受 `day`/`week`。
 
@@ -177,9 +179,13 @@ SOLUSDT
 | `-serve` (`-s`) | false | 启动 HTTP 服务 |
 | `-addr` (`-a`) | :8080 | HTTP 监听地址 |
 | `-source` (`-so`) | auto | 数据源：`auto` / `em` / `sina` / `tencent` / `file:./path.json`，可逗号串联回退 |
+| `-mail` | true | 命中时发送邮件（未配置 `FIND_ASSETS_SMTP_PASS` 则跳过） |
+| `-mail-to` / `-mail-from` | richard_0525@foxmail.com | 收件人 / 发件人 |
+| `-smtp-host` / `-smtp-port` / `-smtp-user` / `-smtp-pass` | smtp.qq.com / 465 / … | SMTP；密码优先环境变量 |
+| `-env` | .env | 环境变量文件 |
 | `-help` (`-h`) | false | 显示帮助 |
 
-CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
+CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。定时批跑脚本：`scripts/ashare/scan-day.sh`、`scan-week.sh`。
 
 ## 数字货币命令行参数
 
@@ -231,7 +237,7 @@ find-assets/
 │   ├── service/              # A 股 ScanService 编排
 │   ├── server/               # Gin HTTP（仅 A 股）
 │   ├── exporter/             # console / json / md
-│   ├── notify/               # SMTP 邮件（仅 crypto-scanner 接入）
+│   ├── notify/               # SMTP 邮件（crypto-scanner + A 股 CLI）
 │   └── crypto/               # 数字货币编排
 │       ├── reversal/         # 专用拐点（超跌/超涨）
 │       ├── pierce/           # 专用一箭穿心（上穿/下穿）
@@ -240,7 +246,8 @@ find-assets/
 │       ├── scheduler.go      # 多周期延迟调度
 │       ├── exchange.go       # OKX REST
 │       └── service.go        # RunScan 合并编排
-├── doc/                      # 项目文档
+├── scripts/ashare/           # 日线/周线 cron 脚本
+├── doc/                      # 项目文档（含 A股扫描器.md、运维部署.md）
 └── output/                   # 导出结果（运行时生成）
 ```
 
@@ -250,9 +257,21 @@ find-assets/
 |------|------|
 | [项目规划](doc/项目规划.md) | 背景、目标、功能需求、里程碑 |
 | [技术方案](doc/技术方案.md) | A 股架构、模块与数据流（crypto 见专文） |
+| [A股扫描器](doc/A股扫描器.md) | `cmd/scanner` 调用链、能力对照、与 crypto 边界 |
 | [API 接口](doc/API接口.md) | A 股 HTTP REST API |
-| [运维部署](doc/运维部署.md) | GCP 本机打包 + 网页 SSH 运维（crypto-scanner） |
+| [运维部署](doc/运维部署.md) | GCP：crypto 常驻 + A 股 cron（§12） |
 | [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | OKX、hot_alt、双策略、调度与邮件 |
+
+### GCP 同机定时（摘要）
+
+在已有 `crypto-scanner` 的 e2-micro 上，A 股用 **cron + `scripts/ashare/`**（勿 `-serve`）：
+
+| 北京时间 | 任务 |
+|----------|------|
+| 工作日 21:05 | 日线 pierce → 日线 reversal |
+| 周五 21:20 | 周线 pierce / reversal |
+
+脚本自带 `-mail`；详见 [运维部署 §12](doc/运维部署.md)、[A股扫描器](doc/A股扫描器.md)。
 
 ## 技术栈
 

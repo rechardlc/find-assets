@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/find-assets/scanner/internal/exporter"
 	"github.com/find-assets/scanner/internal/model"
+	"github.com/find-assets/scanner/internal/notify"
 	"github.com/find-assets/scanner/internal/server"
 	"github.com/find-assets/scanner/internal/service"
 	"github.com/find-assets/scanner/internal/source"
@@ -26,6 +28,12 @@ import (
 )
 
 func main() {
+	envPath, envExplicit := resolveEnvFileArg(os.Args[1:])
+	if err := loadEnvFile(envPath, envExplicit); err != nil {
+		fmt.Fprintln(os.Stderr, "加载环境变量文件失败:", err)
+		os.Exit(2)
+	}
+
 	var (
 		help      = flag.Bool("help", false, "显示帮助信息并退出")
 		period    = flag.String("period", "day", "K 线周期：day | week （CLI 模式必填）")
@@ -40,8 +48,17 @@ func main() {
 		serve     = flag.Bool("serve", false, "以 HTTP 服务模式运行")
 		addr      = flag.String("addr", ":8080", "HTTP 监听地址")
 		srcSpec   = flag.String("source", "auto", "数据源：auto | em | sina | tencent | file:./path.json，可逗号串联做回退（如 file:./stocks.json,em）")
+		mail      = flag.Bool("mail", true, "命中时发送邮件通知")
+		mailTo    = flag.String("mail-to", "richard_0525@foxmail.com", "邮件收件人")
+		mailFrom  = flag.String("mail-from", "richard_0525@foxmail.com", "邮件发件人")
+		smtpHost  = flag.String("smtp-host", "smtp.qq.com", "SMTP 服务器")
+		smtpPort  = flag.Int("smtp-port", 465, "SMTP 端口")
+		smtpUser  = flag.String("smtp-user", "richard_0525@foxmail.com", "SMTP 用户名")
+		smtpPass  = flag.String("smtp-pass", os.Getenv("FIND_ASSETS_SMTP_PASS"), "SMTP 授权码；建议使用 FIND_ASSETS_SMTP_PASS")
+		envFile   = flag.String("env", envPath, "环境变量文件路径")
 	)
-	// 自定义用法：-h / -help 以及参数错误时统一打印结构化帮助。
+	_ = envFile // 已在 flag.Parse 前加载；保留 flag 供 -h 展示与兼容 crypto 用法
+
 	flag.Usage = func() { printHelp(os.Stderr) }
 	os.Args = expandShortFlags(os.Args)
 	flag.Parse()
@@ -89,12 +106,20 @@ func main() {
 		os.Exit(2)
 	}
 
-	runCLI(service.New(composite), *period, *pattern, *workers, *barsLimit, *rangeArg, *volumeArg, *crossArg, *exportArg, *outDir, saveCachePath)
+	mailCfg := notify.Config{
+		Host:     *smtpHost,
+		Port:     *smtpPort,
+		User:     *smtpUser,
+		Password: *smtpPass,
+		From:     *mailFrom,
+		To:       *mailTo,
+	}
+	runCLI(service.New(composite), *period, *pattern, *workers, *barsLimit, *rangeArg, *volumeArg, *crossArg, *exportArg, *outDir, saveCachePath, *mail, mailCfg)
 }
 
 // ---------------- CLI 模式 ----------------
 
-func runCLI(svc *service.ScanService, period, pattern string, workers, bars int, rangePct, volumePct float64, deadCross int, exportArg, outDir, saveCachePath string) {
+func runCLI(svc *service.ScanService, period, pattern string, workers, bars int, rangePct, volumePct float64, deadCross int, exportArg, outDir, saveCachePath string, mail bool, mailCfg notify.Config) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -151,6 +176,26 @@ func runCLI(svc *service.ScanService, period, pattern string, workers, bars int,
 	if err := dispatchExports(rep, formats, outDir, period+"_"+pattern); err != nil {
 		log.Fatalf("导出失败: %v", err)
 	}
+
+	if err := maybeSendMail(mail, mailCfg, rep); err != nil {
+		log.Fatalf("邮件发送失败: %v", err)
+	}
+}
+
+func maybeSendMail(enabled bool, cfg notify.Config, rep *exporter.Report) error {
+	if !enabled || rep == nil || rep.Matched == 0 {
+		return nil
+	}
+	err := notify.SendReport(cfg, rep)
+	if errors.Is(err, notify.ErrMissingPassword) {
+		log.Println("邮件通知已跳过：未配置 SMTP 授权码，请设置 FIND_ASSETS_SMTP_PASS 或 -smtp-pass")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Printf("已发送邮件通知 → %s（命中 %d）\n", cfg.To, rep.Matched)
+	return nil
 }
 
 func splitFormats(s string) []string {
@@ -211,8 +256,6 @@ func dispatchExports(rep *exporter.Report, formats []string, outDir, label strin
 
 // ---------------- 帮助信息 ----------------
 
-// printHelp 输出结构化的帮助：用法、周期、形态、组合、参数与示例。
-// 周期/形态列表由 strategy 包动态生成，新增维度会自动出现。
 func printHelp(w io.Writer) {
 	exe := filepath.Base(os.Args[0])
 
@@ -253,6 +296,9 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "  -s,  -serve              以 HTTP 服务模式运行\n")
 	fmt.Fprintf(w, "  -a,  -addr string        HTTP 监听地址 (默认 :8080)\n")
 	fmt.Fprintf(w, "  -so, -source string      数据源 (默认 auto)\n")
+	fmt.Fprintf(w, "  -mail                    命中发邮件 (默认 true)\n")
+	fmt.Fprintf(w, "  -mail-to/-mail-from/…    SMTP 参数（同 crypto-scanner）\n")
+	fmt.Fprintf(w, "  -env string              .env 路径 (默认 .env)\n")
 	fmt.Fprintf(w, "  -h,  -help               显示帮助并退出\n")
 	fmt.Fprintf(w, "\n清单缓存 (CLI 自动):\n")
 	fmt.Fprintf(w, "  可执行文件旁 stocks/ 目录按日落盘；同日复用缓存，跨日拉远程并覆盖。\n")
@@ -262,6 +308,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "  %s -p day -pt pierce -r 1.2 -v 25\n", exe)
 	fmt.Fprintf(w, "  %s -p week -pt reversal -e json,md -o ./output\n", exe)
 	fmt.Fprintf(w, "  %s -p week -pt pierce              # 周线一箭穿心\n", exe)
+	fmt.Fprintf(w, "  %s -p day -pt pierce -mail=true\n", exe)
 	fmt.Fprintf(w, "  %s -s -a :8080\n", exe)
 }
 
