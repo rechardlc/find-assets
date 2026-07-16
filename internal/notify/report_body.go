@@ -30,21 +30,37 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 		if it.Alert {
 			marker = "★ "
 		}
-		fmt.Fprintf(w, "  %2d. %s%-12s  %-24s  %s\n", i+1, marker, it.Code, it.Name, it.Tag)
+		label := strings.TrimSpace(it.Name)
+		if label == "" {
+			label = it.Code
+		}
+		fmt.Fprintf(w, "  %2d. %s%-24s  %s\n", i+1, marker, label, it.Tag)
 	}
 	if reportHasAlert(rep) {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "★ 标记为强势信号（穿满 5 根均线，或穿 4 根且 EMA120 位于强势一侧）。")
+		fmt.Fprintln(w, alertLegend(rep.Pattern))
 	}
 	fmt.Fprintln(w)
 
 	serverLabel := serverZoneLabel(rep.StartedAt)
-		fmt.Fprintf(w, "扫描时间（北京时间）：%s\n", rep.StartedAt.In(beijingLocation).Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(w, "扫描时间（北京时间）：%s\n", rep.StartedAt.In(beijingLocation).Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(w, "扫描时间（服务器 · %s）：%s\n", serverLabel, rep.StartedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(w, "扫描标的数：%d\n", rep.Total)
 	fmt.Fprintf(w, "命中数：%d\n", rep.Matched)
 	fmt.Fprintf(w, "耗时：%s\n", rep.Elapsed)
 	return nil
+}
+
+// alertLegend 按形态返回 ★ 强势信号的说明文案。
+func alertLegend(pattern string) string {
+	switch pattern {
+	case "reversal":
+		return "★ 标记为强势信号（近 5 根 K 线中存在一根长影线大于实体，且为窗口极值：超涨看最高价、超跌看最低价）。"
+	case "pierce":
+		return "★ 标记为强势信号（穿满 5 根均线，或穿 4 根且 EMA120 位于强势一侧）。"
+	default:
+		return "★ 标记为强势信号。"
+	}
 }
 
 // reportHasAlert 判断报告中是否存在特殊标记（强势）命中。

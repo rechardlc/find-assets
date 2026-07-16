@@ -150,15 +150,72 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 		snap.EMA120 = ema120[last]
 		ageLabel = "老币"
 	}
-	tag := fmt.Sprintf("[%s·%s·%s]", intervalLabel(opt.Interval), dirLabel, ageLabel)
+
+	// 强势判定：命中拐点后，最近 5 根已收盘 K 线中存在一根长影线大于实体且为窗口极值。
+	strong := hasStrongShadow(bars, last, dir)
+	special := ""
+	if strong {
+		special = "·★强势"
+	}
+	tag := fmt.Sprintf("[%s·%s·%s%s]", intervalLabel(opt.Interval), dirLabel, ageLabel, special)
 
 	return model.Result{
 		Code:     stock.Code,
 		Name:     stock.Name,
 		Tag:      tag,
 		Metric:   fmt.Sprintf("样本 %d 根", n),
+		Alert:    strong,
 		Snapshot: snap,
 	}, true
+}
+
+// strongWindow 强势判定回看的 K 线根数。
+const strongWindow = 5
+
+// hasStrongShadow 判定以 end 结尾的最近 strongWindow 根已收盘 K 线中，
+// 是否存在一根「长影线大于实体」且为窗口极值的 K 线：
+//   - 超涨拐点(Overbought)：上影线 > 实体，且该根最高价严格大于其余各根
+//   - 超跌拐点(Oversold)：下影线 > 实体，且该根最低价严格小于其余各根
+func hasStrongShadow(bars []model.Kline, end int, dir Direction) bool {
+	start := end - strongWindow + 1
+	if start < 0 {
+		return false
+	}
+	for i := start; i <= end; i++ {
+		k := bars[i]
+		body := math.Abs(k.Close - k.Open)
+		switch dir {
+		case Overbought:
+			upperShadow := k.High - math.Max(k.Open, k.Close)
+			if upperShadow > body && isExtreme(bars, start, end, i, true) {
+				return true
+			}
+		case Oversold:
+			lowerShadow := math.Min(k.Open, k.Close) - k.Low
+			if lowerShadow > body && isExtreme(bars, start, end, i, false) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isExtreme 判定 idx 根在 [start,end] 窗口内是否为极值：
+// high=true 要求其最高价严格大于其余各根；否则要求其最低价严格小于其余各根。
+func isExtreme(bars []model.Kline, start, end, idx int, high bool) bool {
+	for i := start; i <= end; i++ {
+		if i == idx {
+			continue
+		}
+		if high {
+			if bars[i].High >= bars[idx].High {
+				return false
+			}
+		} else if bars[i].Low <= bars[idx].Low {
+			return false
+		}
+	}
+	return true
 }
 
 func intervalLabel(interval string) string {

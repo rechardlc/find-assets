@@ -46,6 +46,57 @@ func TestGoldenCrossAtMatchesDeadCrossMirror(t *testing.T) {
 	}
 }
 
+func TestHasStrongShadow_Overbought(t *testing.T) {
+	// 五根 K 线，末根上影线远大于实体且最高价为窗口最高。
+	bars := []model.Kline{
+		{Open: 10, Close: 10.2, High: 10.5, Low: 9.9},
+		{Open: 10.2, Close: 10.4, High: 10.6, Low: 10.1},
+		{Open: 10.4, Close: 10.5, High: 10.7, Low: 10.3},
+		{Open: 10.5, Close: 10.6, High: 10.8, Low: 10.4},
+		{Open: 10.6, Close: 10.7, High: 11.6, Low: 10.5}, // 上影线 0.9 > 实体 0.1，最高价 11.6 为窗口最高
+	}
+	if !hasStrongShadow(bars, len(bars)-1, Overbought) {
+		t.Fatal("expected strong overbought shadow")
+	}
+	// 窗口最高价的那根实体大于影线，其余长影线根都不是窗口最高 → 不算强势。
+	notStrong := []model.Kline{
+		{Open: 10, Close: 10.2, High: 10.9, Low: 9.9},   // 上影 0.7 > 实体 0.2，但非窗口最高
+		{Open: 10.2, Close: 10.4, High: 10.6, Low: 10.1}, // 短影
+		{Open: 10.4, Close: 10.5, High: 10.7, Low: 10.3}, // 短影
+		{Open: 10.5, Close: 10.6, High: 10.8, Low: 10.4}, // 短影
+		{Open: 10.6, Close: 11.6, High: 11.65, Low: 10.5}, // 窗口最高，但实体 1.0 > 上影 0.05
+	}
+	if hasStrongShadow(notStrong, len(notStrong)-1, Overbought) {
+		t.Fatal("expected non-strong when the window high has a short shadow")
+	}
+}
+
+func TestHasStrongShadow_Oversold(t *testing.T) {
+	// 五根 K 线，末根下影线远大于实体且最低价为窗口最低。
+	bars := []model.Kline{
+		{Open: 10, Close: 9.8, High: 10.1, Low: 9.7},
+		{Open: 9.8, Close: 9.6, High: 9.9, Low: 9.5},
+		{Open: 9.6, Close: 9.5, High: 9.7, Low: 9.4},
+		{Open: 9.5, Close: 9.4, High: 9.6, Low: 9.3},
+		{Open: 9.4, Close: 9.3, High: 9.5, Low: 8.4}, // 下影线 0.9 > 实体 0.1，最低价 8.4 为窗口最低
+	}
+	if !hasStrongShadow(bars, len(bars)-1, Oversold) {
+		t.Fatal("expected strong oversold shadow")
+	}
+	// 上影线大于实体但方向不匹配，超跌不应命中。
+	flat := makeFlatKlines(5)
+	if hasStrongShadow(flat, len(flat)-1, Oversold) {
+		t.Fatal("expected flat klines to be non-strong")
+	}
+}
+
+func TestHasStrongShadow_InsufficientBars(t *testing.T) {
+	bars := makeFlatKlines(4)
+	if hasStrongShadow(bars, len(bars)-1, Overbought) {
+		t.Fatal("expected false when fewer than 5 bars available")
+	}
+}
+
 func makeFlatKlines(n int) []model.Kline {
 	out := make([]model.Kline, n)
 	start := time.Date(2026, 6, 17, 0, 0, 0, 0, time.UTC)

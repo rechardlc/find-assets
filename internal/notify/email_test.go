@@ -34,7 +34,7 @@ func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 		"Subject: 命中提醒：15分钟超跌拐点 命中 1 个",
 		"数字货币 · 15分钟超跌拐点",
 		"命中清单",
-		"PEPEUSDT",
+		"PEPE USDT Perpetual",
 		"扫描时间（服务器 ·",
 		"扫描时间（北京时间）：2026-06-17 10:45:00",
 	} {
@@ -43,9 +43,34 @@ func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 		}
 	}
 
+	if strings.Contains(text, "PEPEUSDT") {
+		t.Fatalf("expected name to replace code in hit list, got:\n%s", text)
+	}
+
 	hitIdx := strings.Index(text, "命中清单")
 	metaIdx := strings.Index(text, "扫描时间（服务器 ·")
 	if hitIdx < 0 || metaIdx < 0 || hitIdx > metaIdx {
 		t.Fatalf("expected 命中清单 before scan metadata, got:\n%s", text)
+	}
+}
+
+func TestBuildReportEmailFallsBackToCodeWhenNameEmpty(t *testing.T) {
+	msg, err := BuildReportEmail(Config{
+		From: "a@example.com",
+		To:   "b@example.com",
+	}, &exporter.Report{
+		Title:     "日线一箭穿心",
+		Mode:      "day:pierce",
+		StartedAt: time.Date(2026, 6, 17, 10, 45, 0, 0, time.UTC),
+		Matched:   1,
+		Results: []model.Result{
+			{Code: "600519", Name: "  "},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(msg), "600519") {
+		t.Fatalf("expected code fallback when name empty, got:\n%s", msg)
 	}
 }
