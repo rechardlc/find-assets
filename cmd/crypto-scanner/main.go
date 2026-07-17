@@ -195,9 +195,9 @@ func parseConfig(args []string) (config, error) {
 	var pierceIntervalsArg string
 	fs.StringVar(&cfg.source, "source", "okx", "数字货币数据源（当前仅支持 okx）")
 	fs.StringVar(&cfg.pool, "pool", "hot_alt", "合约池：hot_alt")
-	fs.IntVar(&cfg.top, "top", 200, "每日缓存的候选合约数量")
+	fs.IntVar(&cfg.top, "top", 300, "每日缓存的候选合约数量")
 	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "拐点策略 K 线周期列表，逗号分隔：15m,1h,4h")
-	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "1h,4h", "一箭穿心策略 K 线周期列表，逗号分隔；留空则关闭一箭穿心")
+	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "4h", "一箭穿心策略 K 线周期列表，1h,4h逗号分隔；留空则关闭一箭穿心")
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
 	fs.BoolVar(&cfg.schedule, "schedule", true, "按 K 线周期持续扫描；如需单次扫描可传 -schedule=false")
