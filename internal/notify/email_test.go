@@ -32,8 +32,6 @@ func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 		"From: richard_0525@foxmail.com",
 		"To: richard_0525@foxmail.com",
 		"Subject: 命中提醒：15分钟超跌拐点 命中 1 个",
-		"数字货币 · 15分钟超跌拐点",
-		"命中清单",
 		"PEPE USDT Perpetual",
 		"扫描时间（服务器 ·",
 		"扫描时间（北京时间）：2026-06-17 10:45:00",
@@ -46,11 +44,14 @@ func TestBuildReportEmailIncludesQQRecipientAndMatches(t *testing.T) {
 	if strings.Contains(text, "PEPEUSDT") {
 		t.Fatalf("expected name to replace code in hit list, got:\n%s", text)
 	}
+	if strings.Contains(text, "数字货币 · 15分钟超跌拐点") {
+		t.Fatalf("expected body to omit report title line, got:\n%s", text)
+	}
 
-	hitIdx := strings.Index(text, "命中清单")
+	hitIdx := strings.Index(text, "PEPE USDT Perpetual")
 	metaIdx := strings.Index(text, "扫描时间（服务器 ·")
 	if hitIdx < 0 || metaIdx < 0 || hitIdx > metaIdx {
-		t.Fatalf("expected 命中清单 before scan metadata, got:\n%s", text)
+		t.Fatalf("expected hit list before scan metadata, got:\n%s", text)
 	}
 }
 

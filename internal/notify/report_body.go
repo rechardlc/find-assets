@@ -12,19 +12,11 @@ import (
 var beijingLocation = time.FixedZone("CST", 8*3600)
 
 func writeReportBody(w io.Writer, rep *exporter.Report) error {
-	title := strings.TrimSpace(rep.Title)
-	if title == "" {
-		title = rep.Mode
-	}
-	fmt.Fprintf(w, "  %s · %s\n", rep.AssetLabel(), title)
-	fmt.Fprintln(w)
-
 	if len(rep.Results) == 0 {
 		fmt.Fprintln(w, "当前未发现符合条件的标的。")
 		return nil
 	}
 
-	fmt.Fprintln(w, "命中清单")
 	for i, it := range rep.Results {
 		marker := "  "
 		if it.Alert {
