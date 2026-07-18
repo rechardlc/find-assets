@@ -7,7 +7,6 @@
 *.dll
 *.so
 *.dylib
-/scanner
 /find-assets.exe
 
 # Build output
