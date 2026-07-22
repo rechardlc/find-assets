@@ -26,7 +26,12 @@ func writeReportBody(w io.Writer, rep *exporter.Report) error {
 		if label == "" {
 			label = it.Code
 		}
-		fmt.Fprintf(w, "  %2d. %s%-24s  %s\n", i+1, marker, label, it.Tag)
+		// A股展示「名称 + 代码」，其它资产（如数字货币）保留形态 Tag。
+		trailing := it.Tag
+		if rep.AssetClass == exporter.AssetStock {
+			trailing = it.Code
+		}
+		fmt.Fprintf(w, "  %2d. %s%-24s  %s\n", i+1, marker, label, trailing)
 	}
 	if reportHasAlert(rep) {
 		fmt.Fprintln(w)
