@@ -17,7 +17,7 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if cfg.source != "okx" {
 		t.Fatalf("unexpected source: %q", cfg.source)
 	}
-	if cfg.pool != "hot_alt" || cfg.top != 200 {
+	if cfg.pool != "hot_alt" || cfg.top != 300 {
 		t.Fatalf("unexpected pool config: pool=%q top=%d", cfg.pool, cfg.top)
 	}
 	if len(cfg.intervals) != 3 || cfg.intervals[0].Name != "15m" || cfg.intervals[1].Name != "1h" || cfg.intervals[2].Name != "4h" {
@@ -50,7 +50,7 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if cfg.customFile != defaultCustomFile {
 		t.Fatalf("unexpected custom file default: %q", cfg.customFile)
 	}
-	if len(cfg.pierceIntervals) != 2 || cfg.pierceIntervals[0].Name != "1h" || cfg.pierceIntervals[1].Name != "4h" {
+	if len(cfg.pierceIntervals) != 1 || cfg.pierceIntervals[0].Name != "4h" {
 		t.Fatalf("unexpected pierce intervals default: %+v", cfg.pierceIntervals)
 	}
 }
@@ -64,6 +64,98 @@ func TestParseConfigDisablesPierceWithEmptyIntervals(t *testing.T) {
 	}
 	if len(cfg.pierceIntervals) != 0 {
 		t.Fatalf("expected pierce disabled, got %+v", cfg.pierceIntervals)
+	}
+}
+
+func TestParseConfigAmplitudeDefaults(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.amplitudeIntervals) != 1 || cfg.amplitudeIntervals[0].Name != "4h" {
+		t.Fatalf("unexpected amplitude intervals default: %+v", cfg.amplitudeIntervals)
+	}
+	if cfg.amplitudePct != 9 {
+		t.Fatalf("unexpected amplitude threshold default: %v", cfg.amplitudePct)
+	}
+}
+
+func TestParseConfigAcceptsMultipleAmplitudeIntervals(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig([]string{"-amplitude-intervals", "1h,4h", "-amplitude", "12.5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.amplitudeIntervals) != 2 || cfg.amplitudeIntervals[0].Name != "1h" || cfg.amplitudeIntervals[1].Name != "4h" {
+		t.Fatalf("unexpected amplitude intervals: %+v", cfg.amplitudeIntervals)
+	}
+	if cfg.amplitudePct != 12.5 {
+		t.Fatalf("unexpected amplitude threshold: %v", cfg.amplitudePct)
+	}
+}
+
+func TestParseConfigDisablesAmplitudeWithEmptyIntervals(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig([]string{"-amplitude-intervals", ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.amplitudeIntervals) != 0 {
+		t.Fatalf("expected amplitude disabled, got %+v", cfg.amplitudeIntervals)
+	}
+}
+
+func TestParseConfigRejectsNonPositiveAmplitude(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	if _, err := parseConfig([]string{"-amplitude", "0"}); err == nil {
+		t.Fatal("expected error for non-positive amplitude threshold")
+	}
+}
+
+func TestParseConfigBoxDefaults(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.boxIntervals) != 2 || cfg.boxIntervals[0].Name != "1h" || cfg.boxIntervals[1].Name != "4h" {
+		t.Fatalf("unexpected box intervals default: %+v", cfg.boxIntervals)
+	}
+	if cfg.boxPct != 0.6 || cfg.boxLookback != 24 || cfg.boxTouches != 3 {
+		t.Fatalf("unexpected box defaults: pct=%v lookback=%d touches=%d", cfg.boxPct, cfg.boxLookback, cfg.boxTouches)
+	}
+}
+
+func TestParseConfigDisablesBoxWithEmptyIntervals(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig([]string{"-box-intervals", ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.boxIntervals) != 0 {
+		t.Fatalf("expected box disabled, got %+v", cfg.boxIntervals)
+	}
+}
+
+func TestParseConfigRejectsInvalidBoxOptions(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cases := map[string][]string{
+		"non-positive width":     {"-box-pct", "0"},
+		"touches below floor":    {"-box-touches", "2"},
+		"lookback below touches": {"-box-lookback", "3", "-box-touches", "5"},
+	}
+	for name, args := range cases {
+		if _, err := parseConfig(args); err == nil {
+			t.Fatalf("%s: expected error for args %v", name, args)
+		}
 	}
 }
 

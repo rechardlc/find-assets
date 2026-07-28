@@ -55,6 +55,10 @@ func alertLegend(pattern string) string {
 		return "★ 标记为强势信号（近 5 根 K 线中存在一根长影线大于实体，且为窗口极值：超涨看最高价、超跌看最低价）。"
 	case "pierce":
 		return "★ 标记为强势信号（穿满 5 根均线，或穿 4 根且 EMA120 位于强势一侧）。"
+	case "amplitude":
+		return "★ 标记为强势信号（振幅达到阈值的 2 倍及以上）。"
+	case "box":
+		return "★ 标记为强势信号（同一价位被触及 5 次及以上，支撑/阻力更硬）。"
 	default:
 		return "★ 标记为强势信号。"
 	}

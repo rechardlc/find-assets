@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/find-assets/scanner/internal/crypto/amplitude"
+	"github.com/find-assets/scanner/internal/crypto/box"
 	"github.com/find-assets/scanner/internal/crypto/pierce"
 	"github.com/find-assets/scanner/internal/crypto/reversal"
 	"github.com/find-assets/scanner/internal/exporter"
@@ -16,8 +18,10 @@ import (
 
 // 支持的数字货币策略标识。
 const (
-	StrategyReversal = "reversal"
-	StrategyPierce   = "pierce"
+	StrategyReversal  = "reversal"
+	StrategyPierce    = "pierce"
+	StrategyAmplitude = "amplitude"
+	StrategyBox       = "box"
 )
 
 type Service struct {
@@ -29,6 +33,14 @@ type ScanJob struct {
 	BarsLimit int
 	Workers   int
 	Assets    []Asset
+	// AmplitudePct 覆盖振幅异动阈值（百分比）；<=0 时用策略默认值。
+	AmplitudePct float64
+	// BoxPct 覆盖箱体震荡带宽上限（百分比）；<=0 时用策略默认值。
+	BoxPct float64
+	// BoxLookback 覆盖箱体震荡回看根数；<=0 时用策略默认值。
+	BoxLookback int
+	// BoxTouches 覆盖箱体震荡最少触及次数；<=0 时用策略默认值。
+	BoxTouches int
 }
 
 func NewService(src Source) *Service {
@@ -161,6 +173,47 @@ func (s *Service) buildActiveStrategies(job ScanJob, strategies []string) ([]act
 				mode:        job.Interval + ":pierce",
 				title:       IntervalTitle(job.Interval) + "一箭穿心",
 			})
+		case StrategyAmplitude:
+			opt := amplitude.DefaultOptions(job.Interval)
+			if job.AmplitudePct > 0 {
+				opt.MinPct = job.AmplitudePct
+			}
+			minBars := amplitude.MinRequiredBars(opt)
+			if job.BarsLimit < minBars {
+				continue // 根数不足：跳过振幅异动
+			}
+			active = append(active, activeStrategy{
+				name:        StrategyAmplitude,
+				perAssetMin: minBars,
+				evalAsset:   func(st model.Stock, ks []model.Kline) []model.Result { return evalAmplitude(st, ks, opt) },
+				pattern:     "amplitude",
+				mode:        job.Interval + ":amplitude",
+				title:       fmt.Sprintf("%s振幅异动(≥%.4g%%)", IntervalTitle(job.Interval), opt.MinPct),
+			})
+		case StrategyBox:
+			opt := box.DefaultOptions(job.Interval)
+			if job.BoxPct > 0 {
+				opt.MaxWidthPct = job.BoxPct
+			}
+			if job.BoxLookback > 0 {
+				opt.Lookback = job.BoxLookback
+			}
+			if job.BoxTouches > 0 {
+				opt.MinTouches = job.BoxTouches
+			}
+			minBars := box.MinRequiredBars(opt)
+			if job.BarsLimit < minBars {
+				continue // 根数不足：跳过箱体震荡
+			}
+			active = append(active, activeStrategy{
+				name:        StrategyBox,
+				perAssetMin: minBars,
+				evalAsset:   func(st model.Stock, ks []model.Kline) []model.Result { return evalBox(st, ks, opt) },
+				pattern:     "box",
+				mode:        job.Interval + ":box",
+				title: fmt.Sprintf("%s箱体震荡(带宽≤%.4g%%·触及≥%d次)",
+					IntervalTitle(job.Interval), opt.MaxWidthPct, opt.MinTouches),
+			})
 		default:
 			return nil, fmt.Errorf("未知数字货币策略: %s", name)
 		}
@@ -215,6 +268,25 @@ func evalReversal(stock model.Stock, klines []model.Kline, opt reversal.Options)
 	out := make([]model.Result, 0, 2)
 	for _, dir := range []reversal.Direction{reversal.Oversold, reversal.Overbought} {
 		if r, ok := reversal.Eval(stock, klines, dir, opt); ok {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// evalAmplitude 只判定上一根已收盘 K 线自身，方向由实体决定，故最多产出一条结果。
+func evalAmplitude(stock model.Stock, klines []model.Kline, opt amplitude.Options) []model.Result {
+	if r, ok := amplitude.Eval(stock, klines, opt); ok {
+		return []model.Result{r}
+	}
+	return nil
+}
+
+// evalBox 顶部与底部箱体各判一次；两者同时命中即为窄幅横盘，会输出两条结果。
+func evalBox(stock model.Stock, klines []model.Kline, opt box.Options) []model.Result {
+	out := make([]model.Result, 0, 2)
+	for _, dir := range []box.Direction{box.Bottom, box.Top} {
+		if r, ok := box.Eval(stock, klines, dir, opt); ok {
 			out = append(out, r)
 		}
 	}

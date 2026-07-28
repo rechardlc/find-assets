@@ -39,10 +39,12 @@
 |------|----------|------|
 | 拐点 `reversal`（超跌 + 超涨） | `15m,1h,4h` | `internal/crypto/reversal` |
 | 一箭穿心 `pierce`（上穿 + 下穿） | `1h,4h` | `internal/crypto/pierce` |
+| 振幅异动 `amplitude`（情绪涨 + 情绪跌） | `4h` | `internal/crypto/amplitude` |
+| 箱体震荡 `box`（底部 + 顶部箱体） | `1h,4h` | `internal/crypto/box` |
 
 - OKX 单一数据源，`hot_alt` 热门山寨合约池（排除 BTC/ETH/稳定币）
 - **每次进程启动**清除当日合约池缓存并重新拉取；同日进程内后续扫描复用
-- 多周期边界对齐后延迟扫描（默认 `delay=20s`）；同周期 K 线只拉一次，两策略合并判定
+- 多周期边界对齐后延迟扫描（默认 `delay=20s`）；同周期 K 线只拉一次，启用的策略合并判定
 - 命中时按「周期 × 策略」独立发邮件（QQ SMTP）
 
 ## 链路总览
@@ -69,11 +71,12 @@
 │       ↓                                                          │
 │  ClearTodayPoolCache → hot_alt 池 / 自定义列表                   │
 │       ↓                                                          │
-│  调度：InitSchedule(intervals ∪ pierce-intervals) + delay        │
+│  调度：InitSchedule(四组 intervals 并集) + delay                 │
 │       ↓                                                          │
-│  crypto.Service.RunScan(interval, [reversal?, pierce?])          │
-│       ↓              ↓                                           │
-│  crypto/reversal  crypto/pierce                                  │
+│  crypto.Service.RunScan(interval,                                │
+│      [reversal?,pierce?,amplitude?,box?])                        │
+│       ↓            ↓             ↓             ↓                 │
+│  crypto/reversal crypto/pierce crypto/amplitude crypto/box       │
 │       ↓                                                          │
 │  exporter + notify.SendReport（命中才发）                         │
 └──────────────────────────────────────────────────────────────────┘
@@ -195,7 +198,13 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-pool` | hot_alt | 合约池规则，当前支持热门山寨综合评分 |
 | `-top` | 200 | 每日缓存的候选合约数量 |
 | `-intervals` | 15m,1h,4h | 拐点策略 K 线周期列表 |
-| `-pierce-intervals` | 1h,4h | 一箭穿心策略 K 线周期列表；留空关闭 |
+| `-pierce-intervals` | 4h | 一箭穿心策略 K 线周期列表；留空关闭 |
+| `-amplitude-intervals` | 4h | 振幅异动策略 K 线周期列表，可多周期；留空关闭 |
+| `-amplitude` | 9 | 振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/最低 |
+| `-box-intervals` | 1h,4h | 箱体震荡策略 K 线周期列表，可多周期；留空关闭 |
+| `-box-pct` | 0.6 | 箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度 |
+| `-box-lookback` | 24 | 箱体震荡回看的已收盘 K 线根数 |
+| `-box-touches` | 3 | 箱体最少触及次数：几根 K 线踩在同一价位才算箱体 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
 | `-schedule` | true | 是否按周期持续扫描；单次扫描传 `-schedule=false` |
@@ -241,6 +250,8 @@ find-assets/
 │   └── crypto/               # 数字货币编排
 │       ├── reversal/         # 专用拐点（超跌/超涨）
 │       ├── pierce/           # 专用一箭穿心（上穿/下穿）
+│       ├── amplitude/        # 专用振幅异动（情绪涨/情绪跌）
+│       ├── box/              # 专用箱体震荡（底部/顶部箱体）
 │       ├── pool.go           # hot_alt 评分
 │       ├── cache.go          # 合约池日缓存
 │       ├── scheduler.go      # 多周期延迟调度
@@ -260,7 +271,7 @@ find-assets/
 | [A股扫描器](doc/A股扫描器.md) | `cmd/scanner` 调用链、能力对照、与 crypto 边界 |
 | [API 接口](doc/API接口.md) | A 股 HTTP REST API |
 | [运维部署](doc/运维部署.md) | GCP：crypto 常驻 + A 股 cron（§12） |
-| [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | OKX、hot_alt、双策略、调度与邮件 |
+| [数字货币合约扫描器设计](doc/数字货币合约扫描器设计.md) | OKX、hot_alt、四种策略、调度与邮件 |
 
 ### GCP 同机定时（摘要）
 

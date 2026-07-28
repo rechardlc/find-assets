@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/find-assets/scanner/internal/crypto"
+	"github.com/find-assets/scanner/internal/crypto/amplitude"
+	"github.com/find-assets/scanner/internal/crypto/box"
 	"github.com/find-assets/scanner/internal/crypto/reversal"
 	"github.com/find-assets/scanner/internal/exporter"
 	"github.com/find-assets/scanner/internal/notify"
@@ -22,29 +24,35 @@ import (
 )
 
 type config struct {
-	source          string
-	pool            string
-	top             int
-	intervals       []crypto.IntervalSpec
-	pierceIntervals []crypto.IntervalSpec
-	bars            int
-	workers         int
-	schedule        bool
-	delay           time.Duration
-	exportArg       string
-	outDir          string
-	mail            bool
-	mailTo          string
-	mailFrom        string
-	smtpHost        string
-	smtpPort        int
-	smtpUser        string
-	smtpPass        string
-	envFile         string
-	custom          bool
-	customFile      string
-	scanOnStart     bool
-	rate            float64
+	source             string
+	pool               string
+	top                int
+	intervals          []crypto.IntervalSpec
+	pierceIntervals    []crypto.IntervalSpec
+	amplitudeIntervals []crypto.IntervalSpec
+	amplitudePct       float64
+	boxIntervals       []crypto.IntervalSpec
+	boxPct             float64
+	boxLookback        int
+	boxTouches         int
+	bars               int
+	workers            int
+	schedule           bool
+	delay              time.Duration
+	exportArg          string
+	outDir             string
+	mail               bool
+	mailTo             string
+	mailFrom           string
+	smtpHost           string
+	smtpPort           int
+	smtpUser           string
+	smtpPass           string
+	envFile            string
+	custom             bool
+	customFile         string
+	scanOnStart        bool
+	rate               float64
 }
 
 func main() {
@@ -69,15 +77,23 @@ func main() {
 
 	reversalSet := specNameSet(cfg.intervals)
 	pierceSet := specNameSet(cfg.pierceIntervals)
-	allSpecs := unionSpecs(cfg.intervals, cfg.pierceIntervals)
+	amplitudeSet := specNameSet(cfg.amplitudeIntervals)
+	boxSet := specNameSet(cfg.boxIntervals)
+	allSpecs := unionSpecs(cfg.intervals, cfg.pierceIntervals, cfg.amplitudeIntervals, cfg.boxIntervals)
 
 	runInterval := func(interval string) {
-		strategies := make([]string, 0, 2)
+		strategies := make([]string, 0, 4)
 		if reversalSet[interval] {
 			strategies = append(strategies, crypto.StrategyReversal)
 		}
 		if pierceSet[interval] {
 			strategies = append(strategies, crypto.StrategyPierce)
+		}
+		if amplitudeSet[interval] {
+			strategies = append(strategies, crypto.StrategyAmplitude)
+		}
+		if boxSet[interval] {
+			strategies = append(strategies, crypto.StrategyBox)
 		}
 		if len(strategies) == 0 {
 			return
@@ -96,10 +112,14 @@ func main() {
 		}
 
 		reps, err := svc.RunScan(ctx, crypto.ScanJob{
-			Interval:  interval,
-			BarsLimit: cfg.bars,
-			Workers:   cfg.workers,
-			Assets:    assets,
+			Interval:     interval,
+			BarsLimit:    cfg.bars,
+			Workers:      cfg.workers,
+			Assets:       assets,
+			AmplitudePct: cfg.amplitudePct,
+			BoxPct:       cfg.boxPct,
+			BoxLookback:  cfg.boxLookback,
+			BoxTouches:   cfg.boxTouches,
 		}, strategies)
 		if err != nil {
 			log.Printf("[%s] 扫描失败: %v", interval, err)
@@ -111,7 +131,7 @@ func main() {
 			log.Printf("[%s] K 线根数不足（需要至少 %d 根），跳过拐点", interval, reversal.MinRequiredBars(opt))
 		}
 
-		for _, stratName := range []string{crypto.StrategyReversal, crypto.StrategyPierce} {
+		for _, stratName := range []string{crypto.StrategyReversal, crypto.StrategyPierce, crypto.StrategyAmplitude, crypto.StrategyBox} {
 			rep := reps[stratName]
 			if rep == nil {
 				continue
@@ -193,11 +213,19 @@ func parseConfig(args []string) (config, error) {
 	cfg := config{envFile: envFile}
 	var intervalsArg string
 	var pierceIntervalsArg string
+	var amplitudeIntervalsArg string
+	var boxIntervalsArg string
 	fs.StringVar(&cfg.source, "source", "okx", "数字货币数据源（当前仅支持 okx）")
 	fs.StringVar(&cfg.pool, "pool", "hot_alt", "合约池：hot_alt")
 	fs.IntVar(&cfg.top, "top", 300, "每日缓存的候选合约数量")
 	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "拐点策略 K 线周期列表，逗号分隔：15m,1h,4h")
 	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "4h", "一箭穿心策略 K 线周期列表，1h,4h逗号分隔；留空则关闭一箭穿心")
+	fs.StringVar(&amplitudeIntervalsArg, "amplitude-intervals", "4h", "振幅异动策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭振幅异动")
+	fs.Float64Var(&cfg.amplitudePct, "amplitude", amplitude.DefaultMinPct, "振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/最低 达到该值即命中")
+	fs.StringVar(&boxIntervalsArg, "box-intervals", "1h,4h", "箱体震荡策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭箱体震荡")
+	fs.Float64Var(&cfg.boxPct, "box-pct", box.DefaultPct, "箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度")
+	fs.IntVar(&cfg.boxLookback, "box-lookback", box.DefaultLookback, "箱体震荡回看的已收盘 K 线根数")
+	fs.IntVar(&cfg.boxTouches, "box-touches", box.DefaultTouches, "箱体震荡最少触及次数：几根 K 线踩在同一价位才算箱体")
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
 	fs.BoolVar(&cfg.schedule, "schedule", true, "按 K 线周期持续扫描；如需单次扫描可传 -schedule=false")
@@ -232,6 +260,34 @@ func parseConfig(args []string) (config, error) {
 			return config{}, err
 		}
 		cfg.pierceIntervals = pierceIntervals
+	}
+
+	if strings.TrimSpace(amplitudeIntervalsArg) != "" {
+		amplitudeIntervals, err := crypto.ParseIntervalList(amplitudeIntervalsArg)
+		if err != nil {
+			return config{}, err
+		}
+		cfg.amplitudeIntervals = amplitudeIntervals
+	}
+	if cfg.amplitudePct <= 0 {
+		return config{}, fmt.Errorf("-amplitude 必须大于 0，当前为 %g", cfg.amplitudePct)
+	}
+
+	if strings.TrimSpace(boxIntervalsArg) != "" {
+		boxIntervals, err := crypto.ParseIntervalList(boxIntervalsArg)
+		if err != nil {
+			return config{}, err
+		}
+		cfg.boxIntervals = boxIntervals
+	}
+	if cfg.boxPct <= 0 {
+		return config{}, fmt.Errorf("-box-pct 必须大于 0，当前为 %g", cfg.boxPct)
+	}
+	if cfg.boxTouches < box.DefaultTouches {
+		return config{}, fmt.Errorf("-box-touches 至少为 %d，当前为 %d", box.DefaultTouches, cfg.boxTouches)
+	}
+	if cfg.boxLookback < cfg.boxTouches {
+		return config{}, fmt.Errorf("-box-lookback 不能小于 -box-touches（%d），当前为 %d", cfg.boxTouches, cfg.boxLookback)
 	}
 	return cfg, nil
 }
