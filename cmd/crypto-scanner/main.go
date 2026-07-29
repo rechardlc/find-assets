@@ -221,13 +221,18 @@ func parseConfig(args []string) (config, error) {
 	var pierceIntervalsArg string
 	var amplitudeIntervalsArg string
 	var boxIntervalsArg string
+	// 数据源
 	fs.StringVar(&cfg.source, "source", "okx", "数字货币数据源（当前仅支持 okx）")
 	fs.StringVar(&cfg.pool, "pool", "hot_alt", "合约池：hot_alt")
 	fs.IntVar(&cfg.top, "top", 300, "每日缓存的候选合约数量")
+	// 拐点策略
 	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "拐点策略 K 线周期列表，逗号分隔：15m,1h,4h")
+	// 一箭穿心策略
 	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "4h", "一箭穿心策略 K 线周期列表，1h,4h逗号分隔；留空则关闭一箭穿心")
+	// 情绪振幅异动策略
 	fs.StringVar(&amplitudeIntervalsArg, "amplitude-intervals", "4h", "振幅异动策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭振幅异动")
-	fs.Float64Var(&cfg.amplitudePct, "amplitude", amplitude.DefaultMinPct, "振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/最低 达到该值即命中")
+	fs.Float64Var(&cfg.amplitudePct, "amplitude", amplitude.DefaultMinPct, "振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/开盘 达到该值即命中")
+	// 箱体震荡策略
 	fs.StringVar(&boxIntervalsArg, "box-intervals", "1h,4h", "箱体震荡策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭箱体震荡")
 	fs.Float64Var(&cfg.boxPct, "box-pct", box.DefaultPct, "箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度")
 	fs.IntVar(&cfg.boxLookback, "box-lookback", box.DefaultLookback, "箱体震荡回看的已收盘 K 线根数")
@@ -235,6 +240,7 @@ func parseConfig(args []string) (config, error) {
 	fs.IntVar(&cfg.boxMinGap, "box-min-gap", box.DefaultMinGap, "箱体首末两次触及之间的中间 K 线最少根数；1 表示仅要求首末触及不相邻")
 	fs.Float64Var(&cfg.boxAmplitudePct, "box-amplitude", box.DefaultMinAmpPct, "箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低 需达到该值")
 	fs.BoolVar(&cfg.boxSidewaysOnly, "box-sideways-only", true, "箱体仅输出顶底同时命中的窄幅横盘；false 时保留仅底/仅顶")
+	// 其他配置
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
 	fs.BoolVar(&cfg.schedule, "schedule", true, "按 K 线周期持续扫描；如需单次扫描可传 -schedule=false")

@@ -200,7 +200,7 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-intervals` | 15m,1h,4h | 拐点策略 K 线周期列表 |
 | `-pierce-intervals` | 4h | 一箭穿心策略 K 线周期列表；留空关闭 |
 | `-amplitude-intervals` | 4h | 振幅异动策略 K 线周期列表，可多周期；留空关闭 |
-| `-amplitude` | 9 | 振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/最低 |
+| `-amplitude` | 9 | 振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/开盘 |
 | `-box-intervals` | 1h,4h | 箱体震荡策略 K 线周期列表，可多周期；留空关闭 |
 | `-box-pct` | 0.6 | 箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度 |
 | `-box-lookback` | 24 | 箱体震荡回看的已收盘 K 线根数 |

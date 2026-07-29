@@ -44,8 +44,8 @@ func TestEvalUpHit(t *testing.T) {
 	if !strings.Contains(r.Tag, "4小时") || !strings.Contains(r.Tag, "情绪涨") {
 		t.Fatalf("unexpected tag: %s", r.Tag)
 	}
-	if got := r.Snapshot.Amplitude; got < 9.99 || got > 10.01 {
-		t.Fatalf("amplitude = %v, want ~10", got)
+	if got := r.Snapshot.Amplitude; got < 9.89 || got > 9.91 {
+		t.Fatalf("amplitude = %v, want ~9.9", got)
 	}
 	if r.Snapshot.High != 110 || r.Snapshot.Low != 100 {
 		t.Fatalf("snapshot high/low = %v/%v, want 110/100", r.Snapshot.High, r.Snapshot.Low)
@@ -135,11 +135,28 @@ func TestEvalTooFewBarsMiss(t *testing.T) {
 	}
 }
 
-func TestPctInvalidData(t *testing.T) {
-	if _, ok := Pct(model.Kline{High: 10, Low: 0}); ok {
-		t.Fatal("expected false for non-positive low")
+func TestPctUsesOpenDenominator(t *testing.T) {
+	k := model.Kline{Open: 0.1635, High: 0.1647, Low: 0.1503, Close: 0.1513}
+	got, ok := Pct(k)
+	if !ok {
+		t.Fatal("expected ok")
 	}
-	if _, ok := Pct(model.Kline{High: 5, Low: 10}); ok {
+	if got < 8.80 || got > 8.82 {
+		t.Fatalf("amplitude = %v, want ~8.81", got)
+	}
+
+	bars := flatBars(10, 1)
+	setSignal(bars, 0.1635, 0.1647, 0.1503, 0.1513)
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, DefaultOptions("4h")); ok {
+		t.Fatal("expected miss at ~8.81% with default 9% threshold")
+	}
+}
+
+func TestPctInvalidData(t *testing.T) {
+	if _, ok := Pct(model.Kline{Open: 0, High: 10, Low: 5}); ok {
+		t.Fatal("expected false for non-positive open")
+	}
+	if _, ok := Pct(model.Kline{Open: 10, High: 5, Low: 10}); ok {
 		t.Fatal("expected false when high < low")
 	}
 }

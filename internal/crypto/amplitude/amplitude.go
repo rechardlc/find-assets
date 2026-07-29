@@ -2,7 +2,7 @@
 //
 // 判定规则：
 //   - 判定对象为**上一根已收盘 K 线**（len-2）；序列末尾（len-1）为当前周期仍在形成中的 K 线，不参与判定
-//   - 振幅 = (最高价 - 最低价) / 最低价 * 100，达到阈值（默认 9%）即命中
+//   - 振幅 = (最高价 - 最低价) / 开盘价 * 100，达到阈值（默认 9%）即命中（与交易所 K 线振幅口径一致）
 //   - 方向由实体决定：收盘 > 开盘 为情绪涨，收盘 < 开盘 为情绪跌，收盘 = 开盘 为情绪分歧
 //   - 强势标记（Alert）：振幅 >= 阈值 * AlertMul（默认 2 倍，即 18%）
 //   - 不做均线与量能过滤：振幅本身即情绪强度，只需上一根 K 线自身的 OHLC
@@ -116,13 +116,13 @@ func Eval(stock model.Stock, bars []model.Kline, opt Options) (model.Result, boo
 	}, true
 }
 
-// Pct 返回单根 K 线的振幅百分比：(最高价 - 最低价) / 最低价 * 100。
-// 最低价非正或高低价倒挂（数据异常）时返回 false。
+// Pct 返回单根 K 线的振幅百分比：(最高价 - 最低价) / 开盘价 * 100。
+// 开盘价非正或高低价倒挂（数据异常）时返回 false。
 func Pct(k model.Kline) (float64, bool) {
-	if k.Low <= 0 || k.High < k.Low {
+	if k.Open <= 0 || k.High < k.Low {
 		return 0, false
 	}
-	return (k.High - k.Low) / k.Low * 100, true
+	return (k.High - k.Low) / k.Open * 100, true
 }
 
 // DirectionOf 按实体方向判定情绪。
