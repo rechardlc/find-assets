@@ -131,6 +131,21 @@ func TestParseConfigBoxDefaults(t *testing.T) {
 		t.Fatalf("unexpected box defaults: pct=%v lookback=%d touches=%d min-gap=%d",
 			cfg.boxPct, cfg.boxLookback, cfg.boxTouches, cfg.boxMinGap)
 	}
+	if cfg.boxAmplitudePct != 5 {
+		t.Fatalf("unexpected box amplitude default: %v", cfg.boxAmplitudePct)
+	}
+}
+
+func TestParseConfigAcceptsBoxAmplitude(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig([]string{"-box-amplitude", "8.5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.boxAmplitudePct != 8.5 {
+		t.Fatalf("unexpected box amplitude: %v", cfg.boxAmplitudePct)
+	}
 }
 
 func TestParseConfigDisablesBoxWithEmptyIntervals(t *testing.T) {
@@ -154,6 +169,7 @@ func TestParseConfigRejectsInvalidBoxOptions(t *testing.T) {
 		"lookback below touches": {"-box-lookback", "30", "-box-touches", "40"},
 		"min gap below floor":    {"-box-min-gap", "0"},
 		"lookback below span":    {"-box-lookback", "6", "-box-min-gap", "6"},
+		"non-positive amplitude": {"-box-amplitude", "0"},
 	}
 	for name, args := range cases {
 		if _, err := parseConfig(args); err == nil {

@@ -36,6 +36,7 @@ type config struct {
 	boxLookback        int
 	boxTouches         int
 	boxMinGap          int
+	boxAmplitudePct    float64
 	bars               int
 	workers            int
 	schedule           bool
@@ -113,15 +114,16 @@ func main() {
 		}
 
 		reps, err := svc.RunScan(ctx, crypto.ScanJob{
-			Interval:     interval,
-			BarsLimit:    cfg.bars,
-			Workers:      cfg.workers,
-			Assets:       assets,
-			AmplitudePct: cfg.amplitudePct,
-			BoxPct:       cfg.boxPct,
-			BoxLookback:  cfg.boxLookback,
-			BoxTouches:   cfg.boxTouches,
-			BoxMinGap:    cfg.boxMinGap,
+			Interval:        interval,
+			BarsLimit:       cfg.bars,
+			Workers:         cfg.workers,
+			Assets:          assets,
+			AmplitudePct:    cfg.amplitudePct,
+			BoxPct:          cfg.boxPct,
+			BoxLookback:     cfg.boxLookback,
+			BoxTouches:      cfg.boxTouches,
+			BoxMinGap:       cfg.boxMinGap,
+			BoxAmplitudePct: cfg.boxAmplitudePct,
 		}, strategies)
 		if err != nil {
 			log.Printf("[%s] 扫描失败: %v", interval, err)
@@ -229,6 +231,7 @@ func parseConfig(args []string) (config, error) {
 	fs.IntVar(&cfg.boxLookback, "box-lookback", box.DefaultLookback, "箱体震荡回看的已收盘 K 线根数")
 	fs.IntVar(&cfg.boxTouches, "box-touches", box.DefaultTouches, "箱体震荡最少触及次数：几根 K 线踩在同一价位才算箱体")
 	fs.IntVar(&cfg.boxMinGap, "box-min-gap", box.DefaultMinGap, "箱体首末两次触及之间的中间 K 线最少根数；1 表示仅要求首末触及不相邻")
+	fs.Float64Var(&cfg.boxAmplitudePct, "box-amplitude", box.DefaultMinAmpPct, "箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低 需达到该值")
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
 	fs.BoolVar(&cfg.schedule, "schedule", true, "按 K 线周期持续扫描；如需单次扫描可传 -schedule=false")
@@ -285,6 +288,9 @@ func parseConfig(args []string) (config, error) {
 	}
 	if cfg.boxPct <= 0 {
 		return config{}, fmt.Errorf("-box-pct 必须大于 0，当前为 %g", cfg.boxPct)
+	}
+	if cfg.boxAmplitudePct <= 0 {
+		return config{}, fmt.Errorf("-box-amplitude 必须大于 0，当前为 %g", cfg.boxAmplitudePct)
 	}
 	if cfg.boxTouches < box.DefaultTouches {
 		return config{}, fmt.Errorf("-box-touches 至少为 %d，当前为 %d", box.DefaultTouches, cfg.boxTouches)

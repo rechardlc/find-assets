@@ -9,6 +9,9 @@
 //   - **末根已收盘 K 线必须是箱体成员**：箱体走完、价格已脱离时信号视为过期，不再命中
 //   - **首末两次触及之间至少隔 MinGap 根中间 K 线**（默认 6，即含端点跨度 >= 8）：
 //     连续几根挤在一起不算箱体震荡，支撑 / 阻力要跨越足够时间被重新验证才有意义
+//   - **箱体内振幅至少 MinAmpPct**（默认 5%）：箱体内（首次触及到末根之间的全部 K 线）
+//     最高 High 与最低 Low 相差不足该值时，只是贴着均价的死水横盘，
+//     支撑 / 阻力没被真正来回考验，也没有可交易空间
 //   - 多个起点都成立时取触及次数最多者；次数相同取起点最靠后者（最紧凑、最新鲜的箱体）
 //   - 强势标记（Alert）：触及次数 >= AlertTouches（默认 5），同一价位被反复验证越多，突破时越值得关注
 package box
@@ -27,6 +30,7 @@ const (
 	DefaultTouches      = 3   // 最少触及次数
 	DefaultMinGap       = 6   // 首末触及之间的中间 K 线最少根数
 	DefaultAlertTouches = 5   // 强势标记所需触及次数
+	DefaultMinAmpPct    = 5   // 箱体跨度内振幅下限（百分比）
 )
 
 // Direction 箱体方向。
@@ -44,6 +48,7 @@ type Options struct {
 	MinTouches   int     // 最少触及次数，默认 3
 	MinGap       int     // 首末触及之间的中间 K 线最少根数，默认 6
 	AlertTouches int     // 触及次数达到该值时标记 ★，默认 5
+	MinAmpPct    float64 // 箱体跨度内振幅下限（百分比），默认 5
 	Interval     string  // 周期标识，用于 Tag，例如 "1h"
 }
 
@@ -54,6 +59,7 @@ func DefaultOptions(interval string) Options {
 		MinTouches:   DefaultTouches,
 		MinGap:       DefaultMinGap,
 		AlertTouches: DefaultAlertTouches,
+		MinAmpPct:    DefaultMinAmpPct,
 		Interval:     interval,
 	}
 }
@@ -73,12 +79,14 @@ func minWindow(opt Options) int {
 	return opt.MinTouches
 }
 
-// zone 一个成立的箱体：[lo, hi] 为成员价格实际覆盖的区间，first 为首次触及的下标。
+// zone 一个成立的箱体：[lo, hi] 为成员价格实际覆盖的区间，first 为首次触及的下标，
+// amp 为跨度 [first, last] 内的振幅（百分比）。
 type zone struct {
 	first   int
 	touches int
 	lo      float64
 	hi      float64
+	amp     float64
 }
 
 // Eval 判定末根已收盘 K 线是否正处于一个被反复验证的箱体上沿 / 下沿。
@@ -128,8 +136,8 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	}
 	tag := fmt.Sprintf("[%s·%s·触及%d次·带宽%.2f%%%s]", intervalLabel(opt.Interval), dirLabel, best.touches, widthPct, special)
 
-	metric := fmt.Sprintf("箱体 %s~%s, 触及 %d 次, 跨 %d 根, %s %.2f%%",
-		formatPrice(best.lo), formatPrice(best.hi), best.touches, last-best.first+1, distLabel, distPct)
+	metric := fmt.Sprintf("箱体 %s~%s, 触及 %d 次, 跨 %d 根, 振幅 %.2f%%, %s %.2f%%",
+		formatPrice(best.lo), formatPrice(best.hi), best.touches, last-best.first+1, best.amp, distLabel, distPct)
 
 	return model.Result{
 		Code:   stock.Code,
@@ -138,13 +146,14 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 		Metric: metric,
 		Alert:  strong,
 		Snapshot: model.Snapshot{
-			Date:    k.Date.Format("2006-01-02 15:04"),
-			Close:   k.Close,
-			Low:     best.lo,
-			High:    best.hi,
-			Range:   widthPct,
-			Touches: best.touches,
-			Bars:    n,
+			Date:      k.Date.Format("2006-01-02 15:04"),
+			Close:     k.Close,
+			Low:       best.lo,
+			High:      best.hi,
+			Range:     widthPct,
+			Amplitude: best.amp,
+			Touches:   best.touches,
+			Bars:      n,
 		},
 	}, true
 }
@@ -153,6 +162,7 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 // 起点越往前，边沿只会越极端（底部更低 / 顶部更高），因此一旦末根被挤出带宽即可提前收敛。
 func findZone(bars []model.Kline, from, last int, dir Direction, opt Options) (zone, bool) {
 	tol := opt.MaxWidthPct / 100
+	minLow, maxHigh := suffixExtremes(bars, from, last)
 	edge := edgePrice(bars[last], dir)
 	best := zone{}
 	found := false
@@ -195,11 +205,38 @@ func findZone(bars []model.Kline, from, last int, dir Direction, opt Options) (z
 		if last-z.first-1 < opt.MinGap {
 			continue
 		}
+		// 跨度内振幅门槛：滤掉贴着均价的死水横盘。跨度随起点前移只会变宽、振幅单调不减，同样 continue。
+		lo, hi := minLow[z.first-from], maxHigh[z.first-from]
+		z.amp = (hi - lo) / lo * 100
+		if z.amp < opt.MinAmpPct {
+			continue
+		}
 		if z.touches > best.touches {
 			best, found = z, true
 		}
 	}
 	return best, found
+}
+
+// suffixExtremes 预计算 [i, last] 区间的最低价与最高价，下标以 from 为原点偏移，
+// 供各候选箱体按其首次触及下标 O(1) 取得跨度内振幅。
+func suffixExtremes(bars []model.Kline, from, last int) (minLow, maxHigh []float64) {
+	n := last - from + 1
+	minLow = make([]float64, n)
+	maxHigh = make([]float64, n)
+	for i := last; i >= from; i-- {
+		lo, hi := bars[i].Low, bars[i].High
+		if i < last {
+			if next := minLow[i-from+1]; next < lo {
+				lo = next
+			}
+			if next := maxHigh[i-from+1]; next > hi {
+				hi = next
+			}
+		}
+		minLow[i-from], maxHigh[i-from] = lo, hi
+	}
+	return minLow, maxHigh
 }
 
 // edgePrice 返回参与箱体判定的价格：底部箱体看最低价，顶部箱体看最高价。
@@ -240,6 +277,9 @@ func normalize(opt Options) Options {
 	}
 	if opt.AlertTouches <= 0 {
 		opt.AlertTouches = DefaultAlertTouches
+	}
+	if opt.MinAmpPct <= 0 {
+		opt.MinAmpPct = DefaultMinAmpPct
 	}
 	if win := opt.MinGap + 2; opt.Lookback < win {
 		opt.Lookback = win

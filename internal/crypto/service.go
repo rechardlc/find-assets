@@ -43,6 +43,8 @@ type ScanJob struct {
 	BoxTouches int
 	// BoxMinGap 覆盖箱体震荡首末触及之间的中间 K 线最少根数；<=0 时用策略默认值。
 	BoxMinGap int
+	// BoxAmplitudePct 覆盖箱体跨度内振幅下限（百分比）；<=0 时用策略默认值。
+	BoxAmplitudePct float64
 }
 
 func NewService(src Source) *Service {
@@ -206,6 +208,9 @@ func (s *Service) buildActiveStrategies(job ScanJob, strategies []string) ([]act
 			if job.BoxMinGap > 0 {
 				opt.MinGap = job.BoxMinGap
 			}
+			if job.BoxAmplitudePct > 0 {
+				opt.MinAmpPct = job.BoxAmplitudePct
+			}
 			minBars := box.MinRequiredBars(opt)
 			if job.BarsLimit < minBars {
 				continue // 根数不足：跳过箱体震荡
@@ -216,8 +221,8 @@ func (s *Service) buildActiveStrategies(job ScanJob, strategies []string) ([]act
 				evalAsset:   func(st model.Stock, ks []model.Kline) []model.Result { return evalBox(st, ks, opt) },
 				pattern:     "box",
 				mode:        job.Interval + ":box",
-				title: fmt.Sprintf("%s箱体震荡(带宽≤%.4g%%·触及≥%d次·间隔≥%d根)",
-					IntervalTitle(job.Interval), opt.MaxWidthPct, opt.MinTouches, opt.MinGap),
+				title: fmt.Sprintf("%s箱体震荡(带宽≤%.4g%%·振幅≥%.4g%%·触及≥%d次·间隔≥%d根)",
+					IntervalTitle(job.Interval), opt.MaxWidthPct, opt.MinAmpPct, opt.MinTouches, opt.MinGap),
 			})
 		default:
 			return nil, fmt.Errorf("未知数字货币策略: %s", name)

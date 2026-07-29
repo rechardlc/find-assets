@@ -11,7 +11,7 @@ type Snapshot struct {
 	EMA120         float64 `json:"ema120,omitempty"`
 	High           float64 `json:"high,omitempty"`            // amplitude 形态：命中当根最高价；box 形态：箱体上沿
 	Low            float64 `json:"low,omitempty"`             // amplitude 形态：命中当根最低价；box 形态：箱体下沿
-	Amplitude      float64 `json:"amplitude,omitempty"`       // 仅 amplitude 形态：实际振幅（百分比）
+	Amplitude      float64 `json:"amplitude,omitempty"`       // amplitude 形态：命中当根振幅（百分比）；box 形态：箱体跨度内振幅（百分比）
 	Range          float64 `json:"range,omitempty"`           // pierce 形态：实际粘合度（百分比）；box 形态：箱体带宽（百分比）
 	Volume         int64   `json:"volume,omitempty"`          // 仅 pierce 形态：命中当根成交量
 	PrevVolume     int64   `json:"prev_volume,omitempty"`     // 仅 pierce 形态：前一根成交量

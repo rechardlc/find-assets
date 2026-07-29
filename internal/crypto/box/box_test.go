@@ -80,6 +80,103 @@ func TestEvalBottomHit(t *testing.T) {
 	if !strings.Contains(r.Metric, "跨 19 根") || !strings.Contains(r.Metric, "距下沿") {
 		t.Fatalf("unexpected metric: %s", r.Metric)
 	}
+	if !strings.Contains(r.Metric, "振幅") || r.Snapshot.Amplitude <= DefaultMinAmpPct {
+		t.Fatalf("metric/snapshot must carry the span amplitude: metric=%s amp=%v", r.Metric, r.Snapshot.Amplitude)
+	}
+}
+
+// flatBars 构造贴着同一价位的死水序列：低点全为 base，高点为 base*(1+amp%)，
+// 箱体本身成立（触及次数、跨度、带宽都够），只用来验证跨度内振幅门槛。
+func flatBars(n int, base, ampPct float64) []model.Kline {
+	bars := make([]model.Kline, n)
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	high := base + base*ampPct/100
+	for i := range bars {
+		bars[i] = model.Kline{
+			Date:   start.Add(time.Duration(i) * time.Hour),
+			Open:   base,
+			High:   high,
+			Low:    base,
+			Close:  base,
+			Volume: 1000,
+		}
+	}
+	return bars
+}
+
+// 振幅门槛边界：4.9% 不命中、5% 命中（与带宽/触及次数同为 >= 口径）。
+func TestEvalAmplitudeBoundary(t *testing.T) {
+	cases := []struct {
+		name   string
+		ampPct float64
+		want   bool
+	}{
+		{"below threshold", 4.9, false},
+		{"exactly at threshold", 5, true},
+		{"above threshold", 8, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bars := flatBars(30, 100, tc.ampPct)
+			for _, dir := range []Direction{Bottom, Top} {
+				r, ok := Eval(model.Stock{Code: "X"}, bars, dir, DefaultOptions("1h"))
+				if ok != tc.want {
+					t.Fatalf("dir=%s hit = %v, want %v (amplitude %.2f%%)", dir, ok, tc.want, tc.ampPct)
+				}
+				if ok && math.Abs(r.Snapshot.Amplitude-tc.ampPct) > 0.01 {
+					t.Fatalf("dir=%s amplitude = %v, want ~%v", dir, r.Snapshot.Amplitude, tc.ampPct)
+				}
+			}
+		})
+	}
+}
+
+// 振幅取箱体内所有 K 线的最高 High 与最低 Low，而非首末两根的价格：
+// 首末两根只差 1%，但中间某根冲高 8%，仍应命中且振幅记为 8%。
+func TestEvalAmplitudeUsesBoxExtremesNotEndBars(t *testing.T) {
+	bars := flatBars(30, 100, 1)
+	bars[20].High = 108 // 箱体正中间的冲高，首末两根都碰不到
+
+	r, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, DefaultOptions("1h"))
+	if !ok {
+		t.Fatal("expected hit: the highest high inside the box is 8% above the lowest low")
+	}
+	if math.Abs(r.Snapshot.Amplitude-8) > 0.01 {
+		t.Fatalf("amplitude = %v, want ~8 (highest high vs lowest low inside the box)", r.Snapshot.Amplitude)
+	}
+}
+
+func TestEvalCustomMinAmpPct(t *testing.T) {
+	bars := flatBars(30, 100, 3)
+
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, DefaultOptions("1h")); ok {
+		t.Fatal("expected miss at default amplitude threshold of 5%")
+	}
+	opt := DefaultOptions("1h")
+	opt.MinAmpPct = 2
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, opt); !ok {
+		t.Fatal("expected hit when amplitude threshold lowered to 2%")
+	}
+}
+
+// 紧凑候选振幅不足时，应回退到跨度更宽、振幅达标的候选。
+func TestEvalFallsBackToWiderZoneOnAmplitude(t *testing.T) {
+	bars := flatBars(30, 100, 1) // 12 之后是死水，单靠这段振幅只有 1%
+	bars[12].High = 106          // 起点退到 12 才凑出 6% 振幅
+	for i := 0; i < 12; i++ {
+		bars[i].Low = 99 // 更低的下沿会把末根挤出带宽，候选无法再往前扩
+	}
+
+	r, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, DefaultOptions("1h"))
+	if !ok {
+		t.Fatal("expected hit: the wider zone reaches the amplitude threshold")
+	}
+	if !strings.Contains(r.Metric, "跨 17 根") {
+		t.Fatalf("span must cover the amplitude source bar, got: %s", r.Metric)
+	}
+	if math.Abs(r.Snapshot.Amplitude-6) > 0.01 {
+		t.Fatalf("amplitude = %v, want ~6", r.Snapshot.Amplitude)
+	}
 }
 
 // 连续三根挤在一起：触及次数够，但首末触及之间没有中间 K 线，不算箱体震荡。
@@ -354,5 +451,8 @@ func TestDefaultOptions(t *testing.T) {
 	}
 	if opt.MinGap != DefaultMinGap || opt.AlertTouches != DefaultAlertTouches || opt.Interval != "4h" {
 		t.Fatalf("unexpected defaults: %+v", opt)
+	}
+	if opt.MinAmpPct != DefaultMinAmpPct {
+		t.Fatalf("unexpected amplitude default: %+v", opt)
 	}
 }
