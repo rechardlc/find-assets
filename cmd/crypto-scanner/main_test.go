@@ -134,6 +134,9 @@ func TestParseConfigBoxDefaults(t *testing.T) {
 	if cfg.boxAmplitudePct != 5 {
 		t.Fatalf("unexpected box amplitude default: %v", cfg.boxAmplitudePct)
 	}
+	if !cfg.boxSidewaysOnly {
+		t.Fatal("expected -box-sideways-only default true")
+	}
 }
 
 func TestParseConfigAcceptsBoxAmplitude(t *testing.T) {

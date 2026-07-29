@@ -207,6 +207,7 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-box-touches` | 3 | 箱体最少触及次数：几根 K 线踩在同一价位才算箱体 |
 | `-box-min-gap` | 6 | 首末两次触及之间的中间 K 线最少根数，滤掉连续几根挤在一起的伪箱体 |
 | `-box-amplitude` | 5 | 箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低，滤掉贴着均价的死水横盘 |
+| `-box-sideways-only` | true | 箱体仅输出顶底同时命中的窄幅横盘；`false` 时保留仅底/仅顶 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
 | `-schedule` | true | 是否按周期持续扫描；单次扫描传 `-schedule=false` |

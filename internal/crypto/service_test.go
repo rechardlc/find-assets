@@ -240,6 +240,82 @@ func TestRunScanBoxBuildsReport(t *testing.T) {
 	}
 }
 
+// 强势（Alert）优先于代码序：字母序靠前的普通命中不得排在强势之前。
+func TestRunScanSortsAlertBeforeNonAlert(t *testing.T) {
+	weak := makeFlatKlines(10)
+	sig := len(weak) - 2
+	weak[sig] = model.Kline{Date: weak[sig].Date, Open: 101, High: 110, Low: 100, Close: 109, Volume: 2000} // 10%
+
+	strong := makeFlatKlines(10)
+	strong[sig] = model.Kline{Date: strong[sig].Date, Open: 100, High: 118, Low: 100, Close: 117, Volume: 2000} // 18%
+
+	ms := multiKlineSource{
+		assets: []Asset{{Symbol: "AAAUSDT"}, {Symbol: "ZZZUSDT"}},
+		klines: map[string][]model.Kline{
+			"AAAUSDT": weak,
+			"ZZZUSDT": strong,
+		},
+	}
+	reps, err := NewService(ms).RunScan(context.Background(), ScanJob{
+		Interval:  "4h",
+		BarsLimit: 300,
+	}, []string{StrategyAmplitude})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reps[StrategyAmplitude]
+	if rep == nil || rep.Matched != 2 {
+		t.Fatalf("expected 2 amplitude hits, got %+v", rep)
+	}
+	if !rep.Results[0].Alert || rep.Results[1].Alert {
+		t.Fatalf("expected Alert then non-Alert, got alert=%v/%v codes=%s/%s",
+			rep.Results[0].Alert, rep.Results[1].Alert,
+			rep.Results[0].Code, rep.Results[1].Code)
+	}
+	if rep.Results[0].Code != "ZZZUSDT" || rep.Results[1].Code != "AAAUSDT" {
+		t.Fatalf("expected ZZZUSDT before AAAUSDT, got %s then %s",
+			rep.Results[0].Code, rep.Results[1].Code)
+	}
+}
+
+// BoxSidewaysOnly=true 时只保留顶底同时命中的窄幅横盘；false 时仅底/仅顶也保留。
+func TestRunScanBoxSidewaysOnlyFiltersSingleSide(t *testing.T) {
+	ms := multiKlineSource{
+		assets: []Asset{{Symbol: "LOWUSDT"}, {Symbol: "BOTHUSDT"}},
+		klines: map[string][]model.Kline{
+			"LOWUSDT":  sparseBottomBox(30),
+			"BOTHUSDT": makeBoxKlines(300),
+		},
+	}
+	reps, err := NewService(ms).RunScan(context.Background(), ScanJob{
+		Interval:        "4h",
+		BarsLimit:       300,
+		BoxSidewaysOnly: true,
+	}, []string{StrategyBox})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reps[StrategyBox]
+	if rep == nil || rep.Matched != 1 {
+		t.Fatalf("expected only sideways hit, got %+v", rep)
+	}
+	if rep.Results[0].Code != "BOTHUSDT" || !strings.Contains(rep.Results[0].Tag, "窄幅横盘") {
+		t.Fatalf("unexpected result: %+v", rep.Results[0])
+	}
+
+	all, err := NewService(ms).RunScan(context.Background(), ScanJob{
+		Interval:        "4h",
+		BarsLimit:       300,
+		BoxSidewaysOnly: false,
+	}, []string{StrategyBox})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := all[StrategyBox]; got == nil || got.Matched != 2 {
+		t.Fatalf("expected both single-side and sideways when flag false, got %+v", got)
+	}
+}
+
 // 箱体报告按触及次数降序：触及更多的合约排在前面。
 func TestRunScanBoxSortsByTouchesDescending(t *testing.T) {
 	ms := multiKlineSource{

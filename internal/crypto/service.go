@@ -45,6 +45,8 @@ type ScanJob struct {
 	BoxMinGap int
 	// BoxAmplitudePct 覆盖箱体跨度内振幅下限（百分比）；<=0 时用策略默认值。
 	BoxAmplitudePct float64
+	// BoxSidewaysOnly 为 true 时仅输出顶底同时命中的「窄幅横盘」；零值 false 保留仅底/仅顶（CLI 默认显式传 true）。
+	BoxSidewaysOnly bool
 }
 
 func NewService(src Source) *Service {
@@ -119,7 +121,10 @@ func (s *Service) RunScan(ctx context.Context, job ScanJob, strategies []string)
 	for _, st := range active {
 		results := resultsByStrat[st.name]
 		sort.Slice(results, func(i, j int) bool {
-			// 触及次数多的靠前（箱体）；其余策略 Touches 为 0，回退到代码序。
+			// 强势优先；其次触及次数多的靠前（箱体）；再回退到代码/Tag。
+			if results[i].Alert != results[j].Alert {
+				return results[i].Alert
+			}
 			if results[i].Snapshot.Touches != results[j].Snapshot.Touches {
 				return results[i].Snapshot.Touches > results[j].Snapshot.Touches
 			}
@@ -222,9 +227,11 @@ func (s *Service) buildActiveStrategies(job ScanJob, strategies []string) ([]act
 			active = append(active, activeStrategy{
 				name:        StrategyBox,
 				perAssetMin: minBars,
-				evalAsset:   func(st model.Stock, ks []model.Kline) []model.Result { return evalBox(st, ks, opt) },
-				pattern:     "box",
-				mode:        job.Interval + ":box",
+				evalAsset: func(st model.Stock, ks []model.Kline) []model.Result {
+					return evalBox(st, ks, opt, job.BoxSidewaysOnly)
+				},
+				pattern: "box",
+				mode:    job.Interval + ":box",
 				title: fmt.Sprintf("%s箱体震荡(带宽≤%.4g%%·振幅≥%.4g%%·触及≥%d次·间隔≥%d根)",
 					IntervalTitle(job.Interval), opt.MaxWidthPct, opt.MinAmpPct, opt.MinTouches, opt.MinGap),
 			})
@@ -297,15 +304,22 @@ func evalAmplitude(stock model.Stock, klines []model.Kline, opt amplitude.Option
 }
 
 // evalBox 顶部与底部箱体各判一次；两者同时命中则合并为一条「窄幅横盘」。
-func evalBox(stock model.Stock, klines []model.Kline, opt box.Options) []model.Result {
+// sidewaysOnly 为 true 时丢弃仅底/仅顶命中。
+func evalBox(stock model.Stock, klines []model.Kline, opt box.Options, sidewaysOnly bool) []model.Result {
 	bottom, hasBottom := box.Eval(stock, klines, box.Bottom, opt)
 	top, hasTop := box.Eval(stock, klines, box.Top, opt)
 	switch {
 	case hasBottom && hasTop:
 		return []model.Result{box.MergeSideways(bottom, top, opt.Interval)}
 	case hasBottom:
+		if sidewaysOnly {
+			return nil
+		}
 		return []model.Result{bottom}
 	case hasTop:
+		if sidewaysOnly {
+			return nil
+		}
 		return []model.Result{top}
 	default:
 		return nil
