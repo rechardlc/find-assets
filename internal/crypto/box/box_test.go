@@ -50,6 +50,37 @@ func setHighAt(bars []model.Kline, idx int, high float64) {
 	bars[idx].Low = high * 0.995
 }
 
+// 顶部与底部同时命中时合成一条窄幅横盘，不拆成两条。
+func TestMergeSideways(t *testing.T) {
+	bottom := model.Result{
+		Code: "X", Name: "X", Alert: false,
+		Snapshot: model.Snapshot{Date: "2026-01-01 10:00", Close: 104, Low: 100, High: 100.4, Range: 0.4, Amplitude: 8, Touches: 3, Bars: 30},
+	}
+	top := model.Result{
+		Code: "X", Name: "X", Alert: true,
+		Snapshot: model.Snapshot{Date: "2026-01-01 10:00", Close: 104, Low: 107.5, High: 108, Range: 0.46, Amplitude: 8, Touches: 5, Bars: 30},
+	}
+	got := MergeSideways(bottom, top, "1h")
+	if !strings.Contains(got.Tag, "窄幅横盘") || !strings.Contains(got.Tag, "底3次") || !strings.Contains(got.Tag, "顶5次") {
+		t.Fatalf("unexpected tag: %s", got.Tag)
+	}
+	if !got.Alert || !strings.Contains(got.Tag, "★强势") {
+		t.Fatalf("merged alert should follow either side: tag=%s alert=%v", got.Tag, got.Alert)
+	}
+	if got.Snapshot.Touches != 5 {
+		t.Fatalf("touches for sorting = %d, want max(3,5)=5", got.Snapshot.Touches)
+	}
+	if got.Snapshot.Low != 100 || got.Snapshot.High != 108 {
+		t.Fatalf("range = %v~%v, want 100~108", got.Snapshot.Low, got.Snapshot.High)
+	}
+	if math.Abs(got.Snapshot.Range-8) > 0.01 {
+		t.Fatalf("height = %v%%, want ~8%%", got.Snapshot.Range)
+	}
+	if !strings.Contains(got.Metric, "底触及 3 次") || !strings.Contains(got.Metric, "顶触及 5 次") {
+		t.Fatalf("unexpected metric: %s", got.Metric)
+	}
+}
+
 func TestEvalBottomHit(t *testing.T) {
 	bars := bottomBase(30)
 	setLowAt(bars, 10, 100.0)

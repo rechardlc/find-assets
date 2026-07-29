@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,22 @@ func (f fakeSource) ListAssets(context.Context) ([]Asset, error) {
 
 func (f fakeSource) Klines(context.Context, Asset, string, int) ([]model.Kline, error) {
 	return f.klines, nil
+}
+
+// multiKlineSource 按交易对返回不同 K 线，用于排序等多资产场景。
+type multiKlineSource struct {
+	assets []Asset
+	klines map[string][]model.Kline
+}
+
+func (m multiKlineSource) Name() string { return "fake" }
+
+func (m multiKlineSource) ListAssets(context.Context) ([]Asset, error) {
+	return m.assets, nil
+}
+
+func (m multiKlineSource) Klines(_ context.Context, asset Asset, _ string, _ int) ([]model.Kline, error) {
+	return m.klines[asset.Symbol], nil
 }
 
 func TestRunReversalSkipsLongIntervalWhenBarsInsufficient(t *testing.T) {
@@ -195,7 +212,7 @@ func TestRunScanAmplitudeRunsWithFewBars(t *testing.T) {
 }
 
 func TestRunScanBoxBuildsReport(t *testing.T) {
-	// 箱体序列：窗口内低点、高点各踩同一价位且跨度内振幅 8%，顶部与底部箱体各命中一次。
+	// 箱体序列：顶底同时命中时合并为一条窄幅横盘。
 	src := fakeSource{assets: []Asset{{Symbol: "PEPEUSDT"}}, klines: makeBoxKlines(300)}
 
 	reps, err := NewService(src).RunScan(context.Background(), ScanJob{
@@ -215,8 +232,41 @@ func TestRunScanBoxBuildsReport(t *testing.T) {
 	if rep.Title != "4小时箱体震荡(带宽≤0.6%·振幅≥5%·触及≥3次·间隔≥6根)" {
 		t.Fatalf("unexpected box title: %q", rep.Title)
 	}
-	if rep.Matched != 2 {
-		t.Fatalf("expected bottom + top box on a flat series, got %d", rep.Matched)
+	if rep.Matched != 1 {
+		t.Fatalf("expected sideways merge of bottom+top into 1 result, got %d", rep.Matched)
+	}
+	if !strings.Contains(rep.Results[0].Tag, "窄幅横盘") {
+		t.Fatalf("expected 窄幅横盘 tag, got %s", rep.Results[0].Tag)
+	}
+}
+
+// 箱体报告按触及次数降序：触及更多的合约排在前面。
+func TestRunScanBoxSortsByTouchesDescending(t *testing.T) {
+	ms := multiKlineSource{
+		assets: []Asset{{Symbol: "LOWUSDT"}, {Symbol: "HIGHUSDT"}},
+		klines: map[string][]model.Kline{
+			"LOWUSDT":  sparseBottomBox(30),
+			"HIGHUSDT": makeBoxKlines(300),
+		},
+	}
+	reps, err := NewService(ms).RunScan(context.Background(), ScanJob{
+		Interval:  "4h",
+		BarsLimit: 300,
+	}, []string{StrategyBox})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reps[StrategyBox]
+	if rep == nil || rep.Matched != 2 {
+		t.Fatalf("expected 2 box hits for sort test, got %+v", rep)
+	}
+	if rep.Results[0].Snapshot.Touches < rep.Results[1].Snapshot.Touches {
+		t.Fatalf("results not sorted by touches desc: %s=%d then %s=%d",
+			rep.Results[0].Code, rep.Results[0].Snapshot.Touches,
+			rep.Results[1].Code, rep.Results[1].Snapshot.Touches)
+	}
+	if rep.Results[0].Code != "HIGHUSDT" || rep.Results[1].Code != "LOWUSDT" {
+		t.Fatalf("expected HIGHUSDT before LOWUSDT, got %s then %s", rep.Results[0].Code, rep.Results[1].Code)
 	}
 }
 
@@ -350,6 +400,35 @@ func makeBoxKlines(n int) []model.Kline {
 			Volume: 1000,
 		}
 	}
+	return out
+}
+
+// sparseBottomBox 仅底部箱体成立且触及恰好 3 次（用于排序：应排在密集箱体之后）。
+func sparseBottomBox(n int) []model.Kline {
+	out := make([]model.Kline, n)
+	start := time.Date(2026, 6, 17, 0, 0, 0, 0, time.UTC)
+	price := 200.0
+	for i := range out {
+		out[i] = model.Kline{
+			Date:   start.Add(time.Duration(i) * time.Hour),
+			Open:   price,
+			Close:  price,
+			High:   price * 1.001,
+			Low:    price,
+			Volume: 1000,
+		}
+		price *= 1.01
+	}
+	setSparseLow := func(idx int, low float64) {
+		out[idx].Low = low
+		out[idx].Open = low * 1.002
+		out[idx].Close = low * 1.003
+		out[idx].High = low * 1.005
+	}
+	// 与 box.TestEvalBottomHit 同结构：3 次触及、跨度足够；基准上行序列本身提供 ≥5% 振幅。
+	setSparseLow(n-20, 100.0)
+	setSparseLow(n-12, 100.4)
+	setSparseLow(n-2, 100.2) // 末根已收盘
 	return out
 }
 

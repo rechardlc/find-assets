@@ -119,10 +119,14 @@ func (s *Service) RunScan(ctx context.Context, job ScanJob, strategies []string)
 	for _, st := range active {
 		results := resultsByStrat[st.name]
 		sort.Slice(results, func(i, j int) bool {
-			if results[i].Code == results[j].Code {
-				return results[i].Tag < results[j].Tag
+			// 触及次数多的靠前（箱体）；其余策略 Touches 为 0，回退到代码序。
+			if results[i].Snapshot.Touches != results[j].Snapshot.Touches {
+				return results[i].Snapshot.Touches > results[j].Snapshot.Touches
 			}
-			return results[i].Code < results[j].Code
+			if results[i].Code != results[j].Code {
+				return results[i].Code < results[j].Code
+			}
+			return results[i].Tag < results[j].Tag
 		})
 		out[st.name] = &exporter.Report{
 			AssetClass: exporter.AssetCrypto,
@@ -292,15 +296,20 @@ func evalAmplitude(stock model.Stock, klines []model.Kline, opt amplitude.Option
 	return nil
 }
 
-// evalBox 顶部与底部箱体各判一次；两者同时命中即为窄幅横盘，会输出两条结果。
+// evalBox 顶部与底部箱体各判一次；两者同时命中则合并为一条「窄幅横盘」。
 func evalBox(stock model.Stock, klines []model.Kline, opt box.Options) []model.Result {
-	out := make([]model.Result, 0, 2)
-	for _, dir := range []box.Direction{box.Bottom, box.Top} {
-		if r, ok := box.Eval(stock, klines, dir, opt); ok {
-			out = append(out, r)
-		}
+	bottom, hasBottom := box.Eval(stock, klines, box.Bottom, opt)
+	top, hasTop := box.Eval(stock, klines, box.Top, opt)
+	switch {
+	case hasBottom && hasTop:
+		return []model.Result{box.MergeSideways(bottom, top, opt.Interval)}
+	case hasBottom:
+		return []model.Result{bottom}
+	case hasTop:
+		return []model.Result{top}
+	default:
+		return nil
 	}
-	return out
 }
 
 func evalPierce(stock model.Stock, klines []model.Kline, opt pierce.Options) []model.Result {

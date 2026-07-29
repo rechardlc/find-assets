@@ -158,6 +158,50 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	}, true
 }
 
+// MergeSideways 将同币种同时命中的底部 + 顶部箱体合成一条「窄幅横盘」。
+// Snapshot.Touches 取两侧较大值，便于报告按触及次数排序；Alert 任一侧重势则保留。
+func MergeSideways(bottom, top model.Result, interval string) model.Result {
+	lo, hi := bottom.Snapshot.Low, top.Snapshot.High
+	heightPct := 0.0
+	if lo > 0 {
+		heightPct = (hi - lo) / lo * 100
+	}
+	touches := bottom.Snapshot.Touches
+	if top.Snapshot.Touches > touches {
+		touches = top.Snapshot.Touches
+	}
+	amp := bottom.Snapshot.Amplitude
+	if top.Snapshot.Amplitude > amp {
+		amp = top.Snapshot.Amplitude
+	}
+	alert := bottom.Alert || top.Alert
+	special := ""
+	if alert {
+		special = "·★强势"
+	}
+	tag := fmt.Sprintf("[%s·窄幅横盘·底%d次·顶%d次·高宽%.2f%%%s]",
+		intervalLabel(interval), bottom.Snapshot.Touches, top.Snapshot.Touches, heightPct, special)
+	metric := fmt.Sprintf("横盘 %s~%s, 底触及 %d 次 / 顶触及 %d 次, 高宽 %.2f%%, 振幅 %.2f%%",
+		formatPrice(lo), formatPrice(hi), bottom.Snapshot.Touches, top.Snapshot.Touches, heightPct, amp)
+	return model.Result{
+		Code:   bottom.Code,
+		Name:   bottom.Name,
+		Tag:    tag,
+		Metric: metric,
+		Alert:  alert,
+		Snapshot: model.Snapshot{
+			Date:      bottom.Snapshot.Date,
+			Close:     bottom.Snapshot.Close,
+			Low:       lo,
+			High:      hi,
+			Range:     heightPct,
+			Amplitude: amp,
+			Touches:   touches,
+			Bars:      bottom.Snapshot.Bars,
+		},
+	}
+}
+
 // findZone 从末根往前扩展箱体起点，返回触及次数最多的箱体。
 // 起点越往前，边沿只会越极端（底部更低 / 顶部更高），因此一旦末根被挤出带宽即可提前收敛。
 func findZone(bars []model.Kline, from, last int, dir Direction, opt Options) (zone, bool) {
