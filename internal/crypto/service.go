@@ -120,19 +120,7 @@ func (s *Service) RunScan(ctx context.Context, job ScanJob, strategies []string)
 	out := make(map[string]*exporter.Report, len(active))
 	for _, st := range active {
 		results := resultsByStrat[st.name]
-		sort.Slice(results, func(i, j int) bool {
-			// 强势优先；其次触及次数多的靠前（箱体）；再回退到代码/Tag。
-			if results[i].Alert != results[j].Alert {
-				return results[i].Alert
-			}
-			if results[i].Snapshot.Touches != results[j].Snapshot.Touches {
-				return results[i].Snapshot.Touches > results[j].Snapshot.Touches
-			}
-			if results[i].Code != results[j].Code {
-				return results[i].Code < results[j].Code
-			}
-			return results[i].Tag < results[j].Tag
-		})
+		sortResults(st.name, results)
 		out[st.name] = &exporter.Report{
 			AssetClass: exporter.AssetCrypto,
 			Period:     job.Interval,
@@ -148,6 +136,33 @@ func (s *Service) RunScan(ctx context.Context, job ScanJob, strategies []string)
 		}
 	}
 	return out, nil
+}
+
+// sortResults 按策略对命中结果排序，供报告与邮件共用同一顺序。
+func sortResults(strategy string, results []model.Result) {
+	sort.Slice(results, func(i, j int) bool {
+		return lessResult(strategy, &results[i], &results[j])
+	})
+}
+
+func lessResult(strategy string, a, b *model.Result) bool {
+	if a.Alert != b.Alert {
+		return a.Alert
+	}
+	switch strategy {
+	case StrategyAmplitude:
+		if a.Snapshot.Amplitude != b.Snapshot.Amplitude {
+			return a.Snapshot.Amplitude > b.Snapshot.Amplitude
+		}
+	default:
+		if a.Snapshot.Touches != b.Snapshot.Touches {
+			return a.Snapshot.Touches > b.Snapshot.Touches
+		}
+	}
+	if a.Code != b.Code {
+		return a.Code < b.Code
+	}
+	return a.Tag < b.Tag
 }
 
 func (s *Service) buildActiveStrategies(job ScanJob, strategies []string) ([]activeStrategy, error) {

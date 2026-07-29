@@ -278,6 +278,45 @@ func TestRunScanSortsAlertBeforeNonAlert(t *testing.T) {
 	}
 }
 
+// 振幅报告在同档内按振幅降序：字母序靠前的普通命中不得排在振幅更大的之前。
+func TestRunScanAmplitudeSortsByAmplitudeDescending(t *testing.T) {
+	sig := func(bars []model.Kline, o, h, l, c float64) {
+		i := len(bars) - 2
+		bars[i] = model.Kline{Date: bars[i].Date, Open: o, High: h, Low: l, Close: c, Volume: 2000}
+	}
+	lowAmp := makeFlatKlines(10)
+	sig(lowAmp, 100, 110, 100, 109) // ~10%
+	highAmp := makeFlatKlines(10)
+	sig(highAmp, 100, 115, 100, 114) // 15%
+
+	ms := multiKlineSource{
+		assets: []Asset{{Symbol: "AAAUSDT"}, {Symbol: "BBBUSDT"}},
+		klines: map[string][]model.Kline{
+			"AAAUSDT": lowAmp,
+			"BBBUSDT": highAmp,
+		},
+	}
+	reps, err := NewService(ms).RunScan(context.Background(), ScanJob{
+		Interval:  "4h",
+		BarsLimit: 300,
+	}, []string{StrategyAmplitude})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := reps[StrategyAmplitude]
+	if rep == nil || rep.Matched != 2 {
+		t.Fatalf("expected 2 amplitude hits, got %+v", rep)
+	}
+	if rep.Results[0].Code != "BBBUSDT" || rep.Results[1].Code != "AAAUSDT" {
+		t.Fatalf("expected higher amplitude first, got %s then %s",
+			rep.Results[0].Code, rep.Results[1].Code)
+	}
+	if rep.Results[0].Snapshot.Amplitude <= rep.Results[1].Snapshot.Amplitude {
+		t.Fatalf("expected amplitude desc, got %v then %v",
+			rep.Results[0].Snapshot.Amplitude, rep.Results[1].Snapshot.Amplitude)
+	}
+}
+
 // BoxSidewaysOnly=true 时只保留顶底同时命中的窄幅横盘；false 时仅底/仅顶也保留。
 func TestRunScanBoxSidewaysOnlyFiltersSingleSide(t *testing.T) {
 	ms := multiKlineSource{
