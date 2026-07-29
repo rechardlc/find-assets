@@ -127,8 +127,9 @@ func TestParseConfigBoxDefaults(t *testing.T) {
 	if len(cfg.boxIntervals) != 2 || cfg.boxIntervals[0].Name != "1h" || cfg.boxIntervals[1].Name != "4h" {
 		t.Fatalf("unexpected box intervals default: %+v", cfg.boxIntervals)
 	}
-	if cfg.boxPct != 0.6 || cfg.boxLookback != 24 || cfg.boxTouches != 3 {
-		t.Fatalf("unexpected box defaults: pct=%v lookback=%d touches=%d", cfg.boxPct, cfg.boxLookback, cfg.boxTouches)
+	if cfg.boxPct != 0.6 || cfg.boxLookback != 24 || cfg.boxTouches != 3 || cfg.boxMinGap != 6 {
+		t.Fatalf("unexpected box defaults: pct=%v lookback=%d touches=%d min-gap=%d",
+			cfg.boxPct, cfg.boxLookback, cfg.boxTouches, cfg.boxMinGap)
 	}
 }
 
@@ -150,7 +151,9 @@ func TestParseConfigRejectsInvalidBoxOptions(t *testing.T) {
 	cases := map[string][]string{
 		"non-positive width":     {"-box-pct", "0"},
 		"touches below floor":    {"-box-touches", "2"},
-		"lookback below touches": {"-box-lookback", "3", "-box-touches", "5"},
+		"lookback below touches": {"-box-lookback", "30", "-box-touches", "40"},
+		"min gap below floor":    {"-box-min-gap", "0"},
+		"lookback below span":    {"-box-lookback", "6", "-box-min-gap", "6"},
 	}
 	for name, args := range cases {
 		if _, err := parseConfig(args); err == nil {

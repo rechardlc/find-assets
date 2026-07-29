@@ -35,6 +35,7 @@ type config struct {
 	boxPct             float64
 	boxLookback        int
 	boxTouches         int
+	boxMinGap          int
 	bars               int
 	workers            int
 	schedule           bool
@@ -120,6 +121,7 @@ func main() {
 			BoxPct:       cfg.boxPct,
 			BoxLookback:  cfg.boxLookback,
 			BoxTouches:   cfg.boxTouches,
+			BoxMinGap:    cfg.boxMinGap,
 		}, strategies)
 		if err != nil {
 			log.Printf("[%s] 扫描失败: %v", interval, err)
@@ -226,6 +228,7 @@ func parseConfig(args []string) (config, error) {
 	fs.Float64Var(&cfg.boxPct, "box-pct", box.DefaultPct, "箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度")
 	fs.IntVar(&cfg.boxLookback, "box-lookback", box.DefaultLookback, "箱体震荡回看的已收盘 K 线根数")
 	fs.IntVar(&cfg.boxTouches, "box-touches", box.DefaultTouches, "箱体震荡最少触及次数：几根 K 线踩在同一价位才算箱体")
+	fs.IntVar(&cfg.boxMinGap, "box-min-gap", box.DefaultMinGap, "箱体首末两次触及之间的中间 K 线最少根数；1 表示仅要求首末触及不相邻")
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
 	fs.BoolVar(&cfg.schedule, "schedule", true, "按 K 线周期持续扫描；如需单次扫描可传 -schedule=false")
@@ -286,8 +289,14 @@ func parseConfig(args []string) (config, error) {
 	if cfg.boxTouches < box.DefaultTouches {
 		return config{}, fmt.Errorf("-box-touches 至少为 %d，当前为 %d", box.DefaultTouches, cfg.boxTouches)
 	}
+	if cfg.boxMinGap < 1 {
+		return config{}, fmt.Errorf("-box-min-gap 至少为 1，当前为 %d", cfg.boxMinGap)
+	}
 	if cfg.boxLookback < cfg.boxTouches {
 		return config{}, fmt.Errorf("-box-lookback 不能小于 -box-touches（%d），当前为 %d", cfg.boxTouches, cfg.boxLookback)
+	}
+	if cfg.boxLookback < cfg.boxMinGap+2 {
+		return config{}, fmt.Errorf("-box-lookback 需能容纳箱体跨度（-box-min-gap+2 = %d），当前为 %d", cfg.boxMinGap+2, cfg.boxLookback)
 	}
 	return cfg, nil
 }

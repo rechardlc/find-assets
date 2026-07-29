@@ -7,6 +7,8 @@
 //     触及 >= 3 次即认定支撑被反复验证；因 L 取自区间最低价，「区间内不得跌破下沿」天然成立
 //   - 顶部箱体：与底部对称，改用最高价，上沿 H 取区间最高价，成员区间为 [H*(1-0.6%), H]
 //   - **末根已收盘 K 线必须是箱体成员**：箱体走完、价格已脱离时信号视为过期，不再命中
+//   - **首末两次触及之间至少隔 MinGap 根中间 K 线**（默认 6，即含端点跨度 >= 8）：
+//     连续几根挤在一起不算箱体震荡，支撑 / 阻力要跨越足够时间被重新验证才有意义
 //   - 多个起点都成立时取触及次数最多者；次数相同取起点最靠后者（最紧凑、最新鲜的箱体）
 //   - 强势标记（Alert）：触及次数 >= AlertTouches（默认 5），同一价位被反复验证越多，突破时越值得关注
 package box
@@ -23,6 +25,7 @@ const (
 	DefaultPct          = 0.6 // 箱体带宽上限（百分比）
 	DefaultLookback     = 24  // 回看已收盘 K 线根数
 	DefaultTouches      = 3   // 最少触及次数
+	DefaultMinGap       = 6   // 首末触及之间的中间 K 线最少根数
 	DefaultAlertTouches = 5   // 强势标记所需触及次数
 )
 
@@ -39,6 +42,7 @@ type Options struct {
 	MaxWidthPct  float64 // 箱体带宽上限（百分比），默认 0.6
 	Lookback     int     // 回看已收盘 K 线根数，默认 24
 	MinTouches   int     // 最少触及次数，默认 3
+	MinGap       int     // 首末触及之间的中间 K 线最少根数，默认 6
 	AlertTouches int     // 触及次数达到该值时标记 ★，默认 5
 	Interval     string  // 周期标识，用于 Tag，例如 "1h"
 }
@@ -48,24 +52,30 @@ func DefaultOptions(interval string) Options {
 		MaxWidthPct:  DefaultPct,
 		Lookback:     DefaultLookback,
 		MinTouches:   DefaultTouches,
+		MinGap:       DefaultMinGap,
 		AlertTouches: DefaultAlertTouches,
 		Interval:     interval,
 	}
 }
 
-// MinRequiredBars 返回参与判定所需的最少 K 线根数：最少触及次数 + 1 根形成中的末根。
+// MinRequiredBars 返回参与判定所需的最少 K 线根数：能容纳一个最小箱体的已收盘根数 + 1 根形成中的末根。
 // 回看根数只是窗口上限，历史不足的新上线合约按实际根数判定。
 func MinRequiredBars(opt Options) int {
-	touches := opt.MinTouches
-	if touches < DefaultTouches {
-		touches = DefaultTouches
-	}
-	return touches + 1
+	return minWindow(normalize(opt)) + 1
 }
 
-// zone 一个成立的箱体：[lo, hi] 为成员价格实际覆盖的区间。
+// minWindow 返回箱体所需的最少已收盘 K 线根数：既要放得下 MinTouches 次触及，
+// 也要放得下「首触及 + MinGap 根中间 K 线 + 末触及」的跨度。
+func minWindow(opt Options) int {
+	if span := opt.MinGap + 2; span > opt.MinTouches {
+		return span
+	}
+	return opt.MinTouches
+}
+
+// zone 一个成立的箱体：[lo, hi] 为成员价格实际覆盖的区间，first 为首次触及的下标。
 type zone struct {
-	start   int
+	first   int
 	touches int
 	lo      float64
 	hi      float64
@@ -87,7 +97,7 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	if from < 0 {
 		from = 0
 	}
-	if last-from+1 < opt.MinTouches {
+	if last-from+1 < minWindow(opt) {
 		return model.Result{}, false
 	}
 	for i := from; i <= last; i++ {
@@ -119,7 +129,7 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	tag := fmt.Sprintf("[%s·%s·触及%d次·带宽%.2f%%%s]", intervalLabel(opt.Interval), dirLabel, best.touches, widthPct, special)
 
 	metric := fmt.Sprintf("箱体 %s~%s, 触及 %d 次, 跨 %d 根, %s %.2f%%",
-		formatPrice(best.lo), formatPrice(best.hi), best.touches, last-best.start+1, distLabel, distPct)
+		formatPrice(best.lo), formatPrice(best.hi), best.touches, last-best.first+1, distLabel, distPct)
 
 	return model.Result{
 		Code:   stock.Code,
@@ -160,11 +170,14 @@ func findZone(bars []model.Kline, from, last int, dir Direction, opt Options) (z
 			break
 		}
 
-		z := zone{start: i, lo: edge, hi: edge}
+		z := zone{first: -1, lo: edge, hi: edge}
 		for j := i; j <= last; j++ {
 			q := edgePrice(bars[j], dir)
 			if !isMember(q, limit, dir) {
 				continue
+			}
+			if z.first < 0 {
+				z.first = j
 			}
 			z.touches++
 			if q < z.lo {
@@ -174,7 +187,15 @@ func findZone(bars []model.Kline, from, last int, dir Direction, opt Options) (z
 				z.hi = q
 			}
 		}
-		if z.touches >= opt.MinTouches && z.touches > best.touches {
+		if z.touches < opt.MinTouches {
+			continue
+		}
+		// 首末触及之间的中间 K 线数量门槛：滤掉挤在一起的伪箱体。
+		// 起点越往前，首次触及只会越早，间隔单调不减，因此这里 continue 而非 break。
+		if last-z.first-1 < opt.MinGap {
+			continue
+		}
+		if z.touches > best.touches {
 			best, found = z, true
 		}
 	}
@@ -214,8 +235,14 @@ func normalize(opt Options) Options {
 	if opt.MinTouches < DefaultTouches {
 		opt.MinTouches = DefaultTouches
 	}
+	if opt.MinGap <= 0 {
+		opt.MinGap = DefaultMinGap
+	}
 	if opt.AlertTouches <= 0 {
 		opt.AlertTouches = DefaultAlertTouches
+	}
+	if win := opt.MinGap + 2; opt.Lookback < win {
+		opt.Lookback = win
 	}
 	if opt.Lookback < opt.MinTouches {
 		opt.Lookback = opt.MinTouches

@@ -1,6 +1,7 @@
 package box
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -81,19 +82,87 @@ func TestEvalBottomHit(t *testing.T) {
 	}
 }
 
-// 用户原始例子：连续三根踩在同一水平线上。
-func TestEvalBottomHitOnConsecutiveBars(t *testing.T) {
+// 连续三根挤在一起：触及次数够，但首末触及之间没有中间 K 线，不算箱体震荡。
+func TestEvalBottomMissOnConsecutiveBars(t *testing.T) {
 	bars := bottomBase(30)
 	setLowAt(bars, 26, 100.0)
 	setLowAt(bars, 27, 100.5)
 	setLowAt(bars, 28, 100.3)
 
-	r, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, DefaultOptions("4h"))
-	if !ok {
-		t.Fatal("expected hit for three consecutive bars sharing a support level")
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, DefaultOptions("4h")); ok {
+		t.Fatal("expected miss: three consecutive bars leave no gap between first and last touch")
 	}
-	if !strings.Contains(r.Metric, "跨 3 根") {
-		t.Fatalf("unexpected metric: %s", r.Metric)
+}
+
+// 跨度门槛边界：中间 5 根不命中、正好 6 根命中。
+func TestEvalBottomGapBoundary(t *testing.T) {
+	cases := []struct {
+		name  string
+		first int
+		want  bool
+	}{
+		{"middle 5 bars", 22, false},
+		{"middle 6 bars", 21, true},
+		{"middle 7 bars", 20, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bars := bottomBase(30)
+			setLowAt(bars, tc.first, 100.0)
+			setLowAt(bars, tc.first+1, 100.4) // 中间成员，不影响首末间隔
+			setLowAt(bars, 28, 100.2)
+
+			r, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, DefaultOptions("1h"))
+			if ok != tc.want {
+				t.Fatalf("hit = %v, want %v (middle bars = %d)", ok, tc.want, 28-tc.first-1)
+			}
+			if ok && !strings.Contains(r.Metric, fmt.Sprintf("跨 %d 根", 28-tc.first+1)) {
+				t.Fatalf("unexpected span in metric: %s", r.Metric)
+			}
+		})
+	}
+}
+
+// 更紧凑的候选跨度不足时，应回退到跨度足够的候选，且跨度按真实首次触及计算。
+func TestEvalBottomFallsBackToWiderZone(t *testing.T) {
+	bars := bottomBase(30)
+	setLowAt(bars, 12, 100.0) // 真实首次触及
+	setLowAt(bars, 26, 100.4) // 与末根相邻，单独成不了箱体
+	setLowAt(bars, 28, 100.2)
+
+	r, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, DefaultOptions("1h"))
+	if !ok {
+		t.Fatal("expected hit: the wider zone satisfies the gap threshold")
+	}
+	if !strings.Contains(r.Metric, "跨 17 根") {
+		t.Fatalf("span must be measured from the real first touch, got: %s", r.Metric)
+	}
+}
+
+func TestEvalTopMissOnConsecutiveBars(t *testing.T) {
+	bars := topBase(30)
+	setHighAt(bars, 26, 120.0)
+	setHighAt(bars, 27, 119.5)
+	setHighAt(bars, 28, 119.8)
+
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, Top, DefaultOptions("4h")); ok {
+		t.Fatal("expected miss: gap threshold applies to top boxes as well")
+	}
+}
+
+func TestEvalCustomMinGap(t *testing.T) {
+	bars := bottomBase(30)
+	setLowAt(bars, 24, 100.0) // 中间 3 根
+	setLowAt(bars, 26, 100.4)
+	setLowAt(bars, 28, 100.2)
+
+	opt := DefaultOptions("1h")
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, opt); ok {
+		t.Fatal("expected miss at default gap of 6")
+	}
+	opt.MinGap = 3
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, opt); !ok {
+		t.Fatal("expected hit when gap threshold lowered to 3")
 	}
 }
 
@@ -230,9 +299,14 @@ func TestEvalRespectsLookbackWindow(t *testing.T) {
 	setLowAt(bars, 28, 100.2)
 
 	opt := DefaultOptions("1h")
-	opt.Lookback = 5 // 窗口仅 24~28
+	opt.MinGap = 1 // 排除跨度门槛的干扰，只验证窗口截断
+	opt.Lookback = 12
 	if _, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, opt); ok {
-		t.Fatal("expected miss: earlier touches fall outside the lookback window")
+		t.Fatal("expected miss: window 17~28 keeps only two touches")
+	}
+	opt.Lookback = 24
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, Bottom, opt); !ok {
+		t.Fatal("expected hit once the window covers all three touches")
 	}
 }
 
@@ -263,11 +337,13 @@ func TestEvalUnknownDirectionMiss(t *testing.T) {
 }
 
 func TestMinRequiredBars(t *testing.T) {
-	if got, want := MinRequiredBars(DefaultOptions("1h")), DefaultTouches+1; got != want {
+	// 默认下跨度需求（间隔 6 + 首末 2 根）大于触及次数需求。
+	if got, want := MinRequiredBars(DefaultOptions("1h")), DefaultMinGap+3; got != want {
 		t.Fatalf("MinRequiredBars = %d, want %d", got, want)
 	}
-	if got := MinRequiredBars(Options{MinTouches: 5}); got != 6 {
-		t.Fatalf("MinRequiredBars = %d, want 6", got)
+	// 触及次数需求更大时以它为准。
+	if got := MinRequiredBars(Options{MinTouches: 12, MinGap: 1}); got != 13 {
+		t.Fatalf("MinRequiredBars = %d, want 13", got)
 	}
 }
 
@@ -276,7 +352,7 @@ func TestDefaultOptions(t *testing.T) {
 	if opt.MaxWidthPct != DefaultPct || opt.Lookback != DefaultLookback || opt.MinTouches != DefaultTouches {
 		t.Fatalf("unexpected defaults: %+v", opt)
 	}
-	if opt.AlertTouches != DefaultAlertTouches || opt.Interval != "4h" {
+	if opt.MinGap != DefaultMinGap || opt.AlertTouches != DefaultAlertTouches || opt.Interval != "4h" {
 		t.Fatalf("unexpected defaults: %+v", opt)
 	}
 }

@@ -205,6 +205,7 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-box-pct` | 0.6 | 箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度 |
 | `-box-lookback` | 24 | 箱体震荡回看的已收盘 K 线根数 |
 | `-box-touches` | 3 | 箱体最少触及次数：几根 K 线踩在同一价位才算箱体 |
+| `-box-min-gap` | 6 | 首末两次触及之间的中间 K 线最少根数，滤掉连续几根挤在一起的伪箱体 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
 | `-schedule` | true | 是否按周期持续扫描；单次扫描传 `-schedule=false` |

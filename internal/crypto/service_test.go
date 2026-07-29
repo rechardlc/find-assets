@@ -212,7 +212,7 @@ func TestRunScanBoxBuildsReport(t *testing.T) {
 	if rep.Pattern != "box" || rep.Mode != "4h:box" {
 		t.Fatalf("unexpected box report: %+v", rep)
 	}
-	if rep.Title != "4小时箱体震荡(带宽≤0.6%·触及≥3次)" {
+	if rep.Title != "4小时箱体震荡(带宽≤0.6%·触及≥3次·间隔≥6根)" {
 		t.Fatalf("unexpected box title: %q", rep.Title)
 	}
 	if rep.Matched != 2 {
@@ -228,12 +228,30 @@ func TestRunScanBoxUsesInjectedOptions(t *testing.T) {
 		BarsLimit:  300,
 		BoxPct:     1.2,
 		BoxTouches: 4,
+		BoxMinGap:  10,
 	}, []string{StrategyBox})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := reps[StrategyBox]; got == nil || got.Title != "1小时箱体震荡(带宽≤1.2%·触及≥4次)" {
+	if got := reps[StrategyBox]; got == nil || got.Title != "1小时箱体震荡(带宽≤1.2%·触及≥4次·间隔≥10根)" {
 		t.Fatalf("injected box options not reflected in report: %+v", got)
+	}
+}
+
+// 跨度门槛注入生效：同一份 K 线在门槛超过窗口可容纳范围时不再命中。
+func TestRunScanBoxMinGapInjectionFiltersHits(t *testing.T) {
+	src := fakeSource{assets: []Asset{{Symbol: "PEPEUSDT"}}, klines: makeFlatKlines(30)}
+
+	reps, err := NewService(src).RunScan(context.Background(), ScanJob{
+		Interval:  "1h",
+		BarsLimit: 300,
+		BoxMinGap: 40, // 超过 30 根 K 线可容纳的跨度
+	}, []string{StrategyBox})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reps[StrategyBox]; got == nil || got.Matched != 0 {
+		t.Fatalf("expected no match when gap threshold exceeds available bars, got %+v", got)
 	}
 }
 
