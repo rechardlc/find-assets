@@ -53,6 +53,21 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if len(cfg.pierceIntervals) != 1 || cfg.pierceIntervals[0].Name != "4h" {
 		t.Fatalf("unexpected pierce intervals default: %+v", cfg.pierceIntervals)
 	}
+	if !cfg.trend {
+		t.Fatal("expected -trend default true")
+	}
+}
+
+func TestParseConfigTrendDisable(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig([]string{"-trend=false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.trend {
+		t.Fatal("expected trend disabled")
+	}
 }
 
 func TestParseConfigDisablesPierceWithEmptyIntervals(t *testing.T) {

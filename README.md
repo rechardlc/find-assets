@@ -41,6 +41,7 @@
 | 一箭穿心 `pierce`（上穿 + 下穿） | `1h,4h` | `internal/crypto/pierce` |
 | 振幅异动 `amplitude`（情绪涨 + 情绪跌） | `4h` | `internal/crypto/amplitude` |
 | 箱体震荡 `box`（底部 + 顶部箱体） | `1h,4h` | `internal/crypto/box` |
+| 多周期趋势 `trend`（多头 + 空头） | 固定 15m+1h+4h（每 1h 收盘） | `internal/crypto/trend` |
 
 - OKX 单一数据源，`hot_alt` 热门山寨合约池（排除 BTC/ETH/稳定币）
 - **每次进程启动**清除当日合约池缓存并重新拉取；同日进程内后续扫描复用
@@ -71,12 +72,14 @@
 │       ↓                                                          │
 │  ClearTodayPoolCache → hot_alt 池 / 自定义列表                   │
 │       ↓                                                          │
-│  调度：InitSchedule(四组 intervals 并集) + delay                 │
+│  调度：InitSchedule(四组 intervals 并集 ∪ trend→1h) + delay      │
 │       ↓                                                          │
 │  crypto.Service.RunScan(interval,                                │
 │      [reversal?,pierce?,amplitude?,box?])                        │
+│  + RunTrend(15m+1h+4h) when -trend & 1h due                      │
 │       ↓            ↓             ↓             ↓                 │
 │  crypto/reversal crypto/pierce crypto/amplitude crypto/box       │
+│  crypto/trend                                                    │
 │       ↓                                                          │
 │  exporter + notify.SendReport（命中才发）                         │
 └──────────────────────────────────────────────────────────────────┘
@@ -208,6 +211,7 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-box-min-gap` | 6 | 首末两次触及之间的中间 K 线最少根数，滤掉连续几根挤在一起的伪箱体 |
 | `-box-amplitude` | 5 | 箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低，滤掉贴着均价的死水横盘 |
 | `-box-sideways-only` | true | 箱体仅输出顶底同时命中的窄幅横盘；`false` 时保留仅底/仅顶 |
+| `-trend` | true | 多周期趋势（15m+1h+4h 联合；每 1h 收盘扫描）；`false` 关闭 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
 | `-schedule` | true | 是否按周期持续扫描；单次扫描传 `-schedule=false` |
@@ -255,6 +259,7 @@ find-assets/
 │       ├── pierce/           # 专用一箭穿心（上穿/下穿）
 │       ├── amplitude/        # 专用振幅异动（情绪涨/情绪跌）
 │       ├── box/              # 专用箱体震荡（底部/顶部箱体）
+│       ├── trend/            # 多周期趋势（15m+1h+4h）
 │       ├── pool.go           # hot_alt 评分
 │       ├── cache.go          # 合约池日缓存
 │       ├── scheduler.go      # 多周期延迟调度

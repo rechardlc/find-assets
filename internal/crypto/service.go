@@ -12,6 +12,7 @@ import (
 	"github.com/find-assets/scanner/internal/crypto/box"
 	"github.com/find-assets/scanner/internal/crypto/pierce"
 	"github.com/find-assets/scanner/internal/crypto/reversal"
+	"github.com/find-assets/scanner/internal/crypto/trend"
 	"github.com/find-assets/scanner/internal/exporter"
 	"github.com/find-assets/scanner/internal/model"
 )
@@ -22,6 +23,7 @@ const (
 	StrategyPierce    = "pierce"
 	StrategyAmplitude = "amplitude"
 	StrategyBox       = "box"
+	StrategyTrend     = "trend"
 )
 
 type Service struct {
@@ -349,4 +351,86 @@ func evalPierce(stock model.Stock, klines []model.Kline, opt pierce.Options) []m
 		}
 	}
 	return out
+}
+
+// RunTrend 拉取 15m/1h/4h 三周期 K 线并判定多周期趋势，产出独立报告。
+// 当 bars 不足以计算 EMA120 时返回 (nil, nil)。
+func (s *Service) RunTrend(ctx context.Context, job ScanJob) (*exporter.Report, error) {
+	if s.src == nil {
+		return nil, errors.New("数字货币数据源未配置")
+	}
+	if job.BarsLimit <= 0 {
+		job.BarsLimit = 300
+	}
+	if job.Workers <= 0 {
+		job.Workers = 10
+	}
+	opt := trend.DefaultOptions()
+	minBars := trend.MinRequiredBars(opt)
+	if job.BarsLimit < minBars {
+		return nil, nil
+	}
+
+	startedAt := time.Now()
+	assets := job.Assets
+	if len(assets) == 0 {
+		var err error
+		assets, err = s.src.ListAssets(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	sem := make(chan struct{}, job.Workers)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var results []model.Result
+	intervals := []string{"15m", "1h", "4h"}
+
+scanLoop:
+	for _, asset := range assets {
+		select {
+		case <-ctx.Done():
+			break scanLoop
+		default:
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(asset Asset) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			var bars [3][]model.Kline
+			for i, iv := range intervals {
+				ks, err := s.src.Klines(ctx, asset, iv, job.BarsLimit)
+				if err != nil || len(ks) < minBars {
+					return
+				}
+				bars[i] = ks
+			}
+			stock := model.Stock{Code: asset.Symbol, Name: asset.Name}
+			if r, ok := trend.Eval(stock, bars[0], bars[1], bars[2], opt); ok {
+				mu.Lock()
+				results = append(results, r)
+				mu.Unlock()
+			}
+		}(asset)
+	}
+	wg.Wait()
+
+	sortResults(StrategyTrend, results)
+	finishedAt := time.Now()
+	return &exporter.Report{
+		AssetClass: exporter.AssetCrypto,
+		Period:     "1h",
+		Pattern:    "trend",
+		Mode:       "1h:trend",
+		Title:      "多周期趋势",
+		StartedAt:  startedAt,
+		FinishedAt: finishedAt,
+		Elapsed:    finishedAt.Sub(startedAt).Round(10 * time.Millisecond).String(),
+		Total:      len(assets),
+		Matched:    len(results),
+		Results:    results,
+	}, nil
 }

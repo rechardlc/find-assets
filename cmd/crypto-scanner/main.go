@@ -38,6 +38,7 @@ type config struct {
 	boxMinGap          int
 	boxAmplitudePct    float64
 	boxSidewaysOnly    bool
+	trend              bool
 	bars               int
 	workers            int
 	schedule           bool
@@ -83,6 +84,15 @@ func main() {
 	amplitudeSet := specNameSet(cfg.amplitudeIntervals)
 	boxSet := specNameSet(cfg.boxIntervals)
 	allSpecs := unionSpecs(cfg.intervals, cfg.pierceIntervals, cfg.amplitudeIntervals, cfg.boxIntervals)
+	if cfg.trend {
+		if _, ok := crypto.SpecByName(allSpecs, "1h"); !ok {
+			h, err := crypto.ParseIntervalList("1h")
+			if err != nil {
+				log.Fatal(err)
+			}
+			allSpecs = unionSpecs(allSpecs, h)
+		}
+	}
 
 	runInterval := func(interval string) {
 		strategies := make([]string, 0, 4)
@@ -152,18 +162,57 @@ func main() {
 		}
 	}
 
-	if !cfg.schedule {
+	runTrend := func() {
+		if !cfg.trend {
+			return
+		}
+		var assets []crypto.Asset
+		var err error
+		if cfg.custom {
+			assets, err = loadCustomAssets(cfg.customFile)
+		} else {
+			assets, err = loadOrBuildPool(ctx, src, cfg.pool, cfg.top)
+		}
+		if err != nil {
+			log.Printf("[trend] 合约池准备失败: %v", err)
+			return
+		}
+		rep, err := svc.RunTrend(ctx, crypto.ScanJob{
+			BarsLimit: cfg.bars,
+			Workers:   cfg.workers,
+			Assets:    assets,
+		})
+		if err != nil {
+			log.Printf("[trend] 扫描失败: %v", err)
+			return
+		}
+		if rep == nil {
+			log.Printf("[trend] K 线根数不足，跳过")
+			return
+		}
+		if err := dispatchExports(rep, splitFormats(cfg.exportArg), cfg.outDir, "crypto_1h_trend"); err != nil {
+			log.Printf("[trend] 导出失败: %v", err)
+		}
+		if err := maybeSendMail(cfg, rep); err != nil {
+			log.Printf("[trend] 邮件通知失败: %v", err)
+		}
+	}
+
+	runAllOnce := func() {
 		for _, spec := range allSpecs {
 			runInterval(spec.Name)
 		}
+		runTrend()
+	}
+
+	if !cfg.schedule {
+		runAllOnce()
 		return
 	}
 
 	if cfg.scanOnStart {
 		fmt.Println("启动即扫描一轮...")
-		for _, spec := range allSpecs {
-			runInterval(spec.Name)
-		}
+		runAllOnce()
 	}
 
 	next := crypto.InitSchedule(time.Now(), allSpecs, cfg.delay)
@@ -189,6 +238,9 @@ func main() {
 
 		for _, name := range due {
 			runInterval(name)
+			if name == "1h" {
+				runTrend()
+			}
 			spec, ok := crypto.SpecByName(allSpecs, name)
 			if !ok {
 				continue
@@ -240,6 +292,7 @@ func parseConfig(args []string) (config, error) {
 	fs.IntVar(&cfg.boxMinGap, "box-min-gap", box.DefaultMinGap, "箱体首末两次触及之间的中间 K 线最少根数；1 表示仅要求首末触及不相邻")
 	fs.Float64Var(&cfg.boxAmplitudePct, "box-amplitude", box.DefaultMinAmpPct, "箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低 需达到该值")
 	fs.BoolVar(&cfg.boxSidewaysOnly, "box-sideways-only", true, "箱体仅输出顶底同时命中的窄幅横盘；false 时保留仅底/仅顶")
+	fs.BoolVar(&cfg.trend, "trend", true, "启用多周期趋势策略（15m+1h+4h 联合；每 1h 收盘扫描）")
 	// 其他配置
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")

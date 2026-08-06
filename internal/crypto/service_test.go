@@ -2,10 +2,12 @@ package crypto
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/find-assets/scanner/internal/indicator"
 	"github.com/find-assets/scanner/internal/model"
 )
 
@@ -38,6 +40,26 @@ func (m multiKlineSource) ListAssets(context.Context) ([]Asset, error) {
 
 func (m multiKlineSource) Klines(_ context.Context, asset Asset, _ string, _ int) ([]model.Kline, error) {
 	return m.klines[asset.Symbol], nil
+}
+
+// multiIntervalSource 按 symbol|interval 返回 K 线，供 RunTrend 三周期测试。
+type multiIntervalSource struct {
+	assets []Asset
+	klines map[string][]model.Kline
+}
+
+func (m multiIntervalSource) Name() string { return "fake" }
+
+func (m multiIntervalSource) ListAssets(context.Context) ([]Asset, error) {
+	return m.assets, nil
+}
+
+func (m multiIntervalSource) Klines(_ context.Context, asset Asset, interval string, _ int) ([]model.Kline, error) {
+	ks, ok := m.klines[asset.Symbol+"|"+interval]
+	if !ok {
+		return nil, errors.New("no klines")
+	}
+	return ks, nil
 }
 
 func TestRunReversalSkipsLongIntervalWhenBarsInsufficient(t *testing.T) {
@@ -562,5 +584,101 @@ func makeRampKlines(n int) []model.Kline {
 		}
 		price *= 1.01
 	}
+	return out
+}
+
+func TestRunTrendReport(t *testing.T) {
+	bars := makeTrendBullBars(300)
+	src := multiIntervalSource{
+		assets: []Asset{{Symbol: "BTCUSDT", Name: "BTC"}},
+		klines: map[string][]model.Kline{
+			"BTCUSDT|15m": bars,
+			"BTCUSDT|1h":  bars,
+			"BTCUSDT|4h":  bars,
+		},
+	}
+	rep, err := NewService(src).RunTrend(context.Background(), ScanJob{
+		BarsLimit: 300,
+		Workers:   2,
+		Assets:    src.assets,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep == nil || rep.Pattern != "trend" || rep.Mode != "1h:trend" || rep.Period != "1h" {
+		t.Fatalf("unexpected report meta: %+v", rep)
+	}
+	if rep.Title != "多周期趋势" || rep.Matched != 1 {
+		t.Fatalf("unexpected title/matched: %+v", rep)
+	}
+	if rep.Results[0].Code != "BTCUSDT" || !strings.Contains(rep.Results[0].Tag, "多头") {
+		t.Fatalf("unexpected result: %+v", rep.Results[0])
+	}
+}
+
+func TestRunTrendSkipsWhenBarsInsufficient(t *testing.T) {
+	src := fakeSource{assets: []Asset{{Symbol: "X"}}, klines: makeFlatKlines(300)}
+	rep, err := NewService(src).RunTrend(context.Background(), ScanJob{
+		BarsLimit: 100,
+		Assets:    []Asset{{Symbol: "X"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep != nil {
+		t.Fatalf("expected nil report when bars insufficient, got %+v", rep)
+	}
+}
+
+func TestRunTrendSkipsAssetMissingInterval(t *testing.T) {
+	bars := makeTrendBullBars(300)
+	src := multiIntervalSource{
+		assets: []Asset{{Symbol: "BTCUSDT"}, {Symbol: "ETHUSDT"}},
+		klines: map[string][]model.Kline{
+			"BTCUSDT|15m": bars,
+			"BTCUSDT|1h":  bars,
+			"BTCUSDT|4h":  bars,
+			// ETH 缺 4h → 跳过
+			"ETHUSDT|15m": bars,
+			"ETHUSDT|1h":  bars,
+		},
+	}
+	rep, err := NewService(src).RunTrend(context.Background(), ScanJob{
+		BarsLimit: 300,
+		Workers:   2,
+		Assets:    src.assets,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep == nil || rep.Matched != 1 || rep.Results[0].Code != "BTCUSDT" {
+		t.Fatalf("expected only BTCUSDT, got %+v", rep)
+	}
+}
+
+// makeTrendBullBars 构造可通过 trend.Eval 多头判定的指数上涨序列，并强制 1h 影线。
+func makeTrendBullBars(n int) []model.Kline {
+	out := make([]model.Kline, n)
+	start := time.Date(2026, 6, 17, 0, 0, 0, 0, time.UTC)
+	price := 100.0
+	for i := range out {
+		out[i] = model.Kline{
+			Date:   start.Add(time.Duration(i) * time.Hour),
+			Open:   price,
+			Close:  price,
+			High:   price,
+			Low:    price,
+			Volume: 1000,
+		}
+		price *= 1.01
+	}
+	closes := model.Closes(out)
+	e30 := indicator.EMA(closes, 30)
+	sig := n - 2
+	c := out[sig].Close
+	out[sig].Open = c
+	out[sig].Close = c
+	out[sig].High = c
+	out[sig].Low = e30[sig] - 3
 	return out
 }
