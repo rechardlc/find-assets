@@ -16,6 +16,20 @@ func TestGapPct(t *testing.T) {
 	}
 }
 
+func TestHasStrictStackBull(t *testing.T) {
+	vals := [5]float64{120, 115, 110, 105, 100}
+	if !hasStrictStack(vals, []int{0, 1, 2, 3, 4}, true) {
+		t.Fatal("expected full bull stack")
+	}
+	if !hasStrictStack(vals, []int{1, 2, 3, 4}, true) {
+		t.Fatal("expected 10/30/60/120 bull stack")
+	}
+	vals2 := [5]float64{120, 110, 115, 105, 100}
+	if hasStrictStack(vals2, []int{0, 1, 2, 3, 4}, true) {
+		t.Fatal("expected miss when EMA10 < EMA30")
+	}
+}
+
 func TestHasAnchorArrangementBull(t *testing.T) {
 	vals := [5]float64{120, 115, 90, 110, 100}
 	if !hasAnchorArrangement(vals, true) {
@@ -65,7 +79,6 @@ func TestWickTouchesBear(t *testing.T) {
 }
 
 func TestWickEntryNearBull(t *testing.T) {
-	// Low 略高于 EMA30（约 0.5%），实体在上方 → 近影线命中
 	ema30 := 100.0
 	k := model.Kline{Open: 102, Close: 103, High: 104, Low: 100.5}
 	if !wickEntry(k, ema30, true, 1) {
@@ -93,9 +106,9 @@ func TestWickEntryNearBear(t *testing.T) {
 }
 
 func TestEvalBullStrongHit(t *testing.T) {
-	bars15 := expBars(300, 100, 1.01)
-	bars1h := expBars(300, 100, 1.01)
-	bars4h := expBars(300, 100, 1.01)
+	bars15 := riseThenFlatBars(300, 100, 1.01, 20)
+	bars1h := riseThenFlatBars(300, 100, 1.01, 20)
+	bars4h := riseThenFlatBars(300, 100, 1.01, 20)
 	forceWickBull(bars1h)
 	r, ok := Eval(model.Stock{Code: "BTCUSDT", Name: "BTC"}, bars15, bars1h, bars4h, DefaultOptions())
 	if !ok {
@@ -110,12 +123,15 @@ func TestEvalBullStrongHit(t *testing.T) {
 	if r.Snapshot.EMA30 == 0 || r.Snapshot.EMA60 == 0 || r.Snapshot.EMA120 == 0 {
 		t.Fatal("expected EMA snapshot")
 	}
+	if gapPct(r.Snapshot.EMA5, r.Snapshot.EMA10) >= DefaultMaxEMA5_10GapPct {
+		t.Fatalf("expected EMA5/10 gap < 0.5, got %.3f", gapPct(r.Snapshot.EMA5, r.Snapshot.EMA10))
+	}
 }
 
 func TestEvalBullNearWickNormalHit(t *testing.T) {
-	bars15 := expBars(300, 100, 1.01)
-	bars1h := expBars(300, 100, 1.01)
-	bars4h := expBars(300, 100, 1.01)
+	bars15 := riseThenFlatBars(300, 100, 1.01, 20)
+	bars1h := riseThenFlatBars(300, 100, 1.01, 20)
+	bars4h := riseThenFlatBars(300, 100, 1.01, 20)
 	forceNearWickBull(bars1h)
 	r, ok := Eval(model.Stock{Code: "BTCUSDT", Name: "BTC"}, bars15, bars1h, bars4h, DefaultOptions())
 	if !ok {
@@ -132,6 +148,15 @@ func TestEvalBullNearWickNormalHit(t *testing.T) {
 	}
 }
 
+func TestEvalEMA5_10GapTooWideMiss(t *testing.T) {
+	// 纯指数上涨：EMA5/EMA10 间距通常 > 0.5%
+	bars := expBars(300, 100, 1.01)
+	forceWickBull(bars)
+	if _, ok := Eval(model.Stock{Code: "X"}, bars, bars, bars, DefaultOptions()); ok {
+		t.Fatal("expected miss when EMA5/10 gap too wide")
+	}
+}
+
 func TestEvalGapTooSmallMiss(t *testing.T) {
 	bars := flatBars(300, 100)
 	if _, ok := Eval(model.Stock{Code: "X"}, bars, bars, bars, DefaultOptions()); ok {
@@ -140,9 +165,9 @@ func TestEvalGapTooSmallMiss(t *testing.T) {
 }
 
 func TestEvalBodyCrossMiss(t *testing.T) {
-	bars15 := expBars(300, 100, 1.01)
-	bars1h := expBars(300, 100, 1.01)
-	bars4h := expBars(300, 100, 1.01)
+	bars15 := riseThenFlatBars(300, 100, 1.01, 20)
+	bars1h := riseThenFlatBars(300, 100, 1.01, 20)
+	bars4h := riseThenFlatBars(300, 100, 1.01, 20)
 	forceBodyCrossBull(bars1h)
 	if _, ok := Eval(model.Stock{Code: "X"}, bars15, bars1h, bars4h, DefaultOptions()); ok {
 		t.Fatal("expected miss when body crosses")
@@ -150,9 +175,9 @@ func TestEvalBodyCrossMiss(t *testing.T) {
 }
 
 func TestEvalBearStrongHit(t *testing.T) {
-	bars15 := expBars(300, 10000, 0.99)
-	bars1h := expBars(300, 10000, 0.99)
-	bars4h := expBars(300, 10000, 0.99)
+	bars15 := riseThenFlatBars(300, 10000, 0.99, 20)
+	bars1h := riseThenFlatBars(300, 10000, 0.99, 20)
+	bars4h := riseThenFlatBars(300, 10000, 0.99, 20)
 	forceWickBear(bars1h)
 	r, ok := Eval(model.Stock{Code: "X"}, bars15, bars1h, bars4h, DefaultOptions())
 	if !ok || !strings.Contains(r.Tag, "空头·强势") {
@@ -164,7 +189,7 @@ func TestEvalBearStrongHit(t *testing.T) {
 }
 
 func TestEvalInsufficientBars(t *testing.T) {
-	bars := expBars(100, 100, 1.01)
+	bars := riseThenFlatBars(100, 100, 1.01, 20)
 	if _, ok := Eval(model.Stock{Code: "X"}, bars, bars, bars, DefaultOptions()); ok {
 		t.Fatal("expected miss when bars < MinBars")
 	}
@@ -172,7 +197,7 @@ func TestEvalInsufficientBars(t *testing.T) {
 
 func TestDefaultOptionsGap(t *testing.T) {
 	opt := DefaultOptions()
-	if opt.MinGapPct != 1 || opt.WickNearPct != 1 || opt.StrongMinGapPct != 8 {
+	if opt.MinGapPct != 1 || opt.WickNearPct != 1 || opt.StrongMinGapPct != 8 || opt.MaxEMA5_10GapPct != 0.5 {
 		t.Fatalf("unexpected defaults: %+v", opt)
 	}
 }
@@ -189,17 +214,28 @@ func flatBars(n int, price float64) []model.Kline {
 	return bars
 }
 
-// expBars 指数增长/衰减序列，便于拉开 EMA30/60/120 间距超过 8%。
+// expBars 纯指数序列（EMA5/10 通常拉开，用于负例）。
 func expBars(n int, base, growth float64) []model.Kline {
+	return riseThenFlatBars(n, base, growth, 0)
+}
+
+// riseThenFlatBars 先趋势再横盘，便于 EMA5≈EMA10 且中长线仍拉开。
+func riseThenFlatBars(n int, base, growth float64, flat int) []model.Kline {
 	bars := make([]model.Kline, n)
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	price := base
+	rise := n - flat
+	if rise < 1 {
+		rise = 1
+	}
 	for i := range bars {
 		bars[i] = model.Kline{
 			Date: start.Add(time.Duration(i) * time.Hour),
 			Open: price, High: price, Low: price, Close: price, Volume: 1000,
 		}
-		price *= growth
+		if i < rise-1 {
+			price *= growth
+		}
 	}
 	return bars
 }

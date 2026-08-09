@@ -2,8 +2,10 @@
 //
 // 判定规则：
 //   - 三周期一律取倒数第二根已收盘 K 线（len-2）；末根 len-1 为形成中 K 线，不参与判定
-//   - 15m、4h：EMA5/10/30/60/120 中存在长度 ≥3 的方向子序列，且必须包含 EMA60、EMA120
-//   - 1h：EMA30/60/120 严格方向排列，且相邻间距均 > MinGapPct（默认 1%）
+//   - 15m：EMA5/10/30/60/120 中存在长度 ≥3 的方向子序列，且必须包含 EMA60、EMA120
+//   - 4h：EMA5/10/30/60/120 严格全排列（多头快线在上，空头对称）
+//   - 1h：EMA10/30/60/120 严格方向排列；EMA5 与 EMA10 间距 < MaxEMA5_10GapPct（默认 0.5%）
+//   - 1h：EMA30/60/120 相邻间距均 > MinGapPct（默认 1%）
 //   - 1h 影线入场：真实触及 EMA30（实体不穿、可贴边），或最低/最高价与 EMA30 差距 < WickNearPct（默认 1%）
 //   - 强势：间距均 > StrongMinGapPct（默认 8%）且影线真实触及 EMA30 → Tag 含「强势」且 Alert=true
 package trend
@@ -16,10 +18,11 @@ import (
 )
 
 const (
-	DefaultMinGapPct       = 1
-	DefaultWickNearPct     = 1
-	DefaultStrongMinGapPct = 8
-	DefaultMinBars         = 250
+	DefaultMinGapPct         = 1
+	DefaultWickNearPct       = 1
+	DefaultStrongMinGapPct   = 8
+	DefaultMaxEMA5_10GapPct  = 0.5
+	DefaultMinBars           = 250
 )
 
 // Direction 趋势方向。
@@ -32,19 +35,21 @@ const (
 
 // Options 多周期趋势参数。
 type Options struct {
-	MinBars         int     // 每周期最少 K 线根数（须含 EMA120），默认 250
-	MinGapPct       float64 // 1h EMA 间距阈值（百分比），默认 1
-	WickNearPct     float64 // 1h 近影线允许差距（百分比），默认 1
-	StrongMinGapPct float64 // 强势间距阈值（百分比），默认 8
+	MinBars          int     // 每周期最少 K 线根数（须含 EMA120），默认 250
+	MinGapPct        float64 // 1h EMA30/60/120 间距阈值（百分比），默认 1
+	WickNearPct      float64 // 1h 近影线允许差距（百分比），默认 1
+	StrongMinGapPct  float64 // 强势间距阈值（百分比），默认 8
+	MaxEMA5_10GapPct float64 // 1h EMA5 与 EMA10 最大间距（百分比），默认 0.5
 }
 
 // DefaultOptions 返回默认参数。
 func DefaultOptions() Options {
 	return Options{
-		MinBars:         DefaultMinBars,
-		MinGapPct:       DefaultMinGapPct,
-		WickNearPct:     DefaultWickNearPct,
-		StrongMinGapPct: DefaultStrongMinGapPct,
+		MinBars:          DefaultMinBars,
+		MinGapPct:        DefaultMinGapPct,
+		WickNearPct:      DefaultWickNearPct,
+		StrongMinGapPct:  DefaultStrongMinGapPct,
+		MaxEMA5_10GapPct: DefaultMaxEMA5_10GapPct,
 	}
 }
 
@@ -85,6 +90,9 @@ func normalizeOptions(opt Options) Options {
 	if opt.StrongMinGapPct <= 0 {
 		opt.StrongMinGapPct = DefaultStrongMinGapPct
 	}
+	if opt.MaxEMA5_10GapPct <= 0 {
+		opt.MaxEMA5_10GapPct = DefaultMaxEMA5_10GapPct
+	}
 	return opt
 }
 
@@ -96,29 +104,14 @@ func evalDir(stock model.Stock, b15, b1h, b4h []model.Kline, dir Direction, opt 
 	if e15 == nil || e4h == nil || e1h == nil {
 		return model.Result{}, false
 	}
-	if !hasAnchorArrangement(*e15, bull) || !hasAnchorArrangement(*e4h, bull) {
-		return model.Result{}, false
-	}
-	// 1h: indices 2/3/4 = EMA30/60/120
-	if bull {
-		if !(e1h[2] > e1h[3] && e1h[3] > e1h[4]) {
-			return model.Result{}, false
-		}
-	} else if !(e1h[2] < e1h[3] && e1h[3] < e1h[4]) {
-		return model.Result{}, false
-	}
-	gap60_120 := gapPct(e1h[4], e1h[3])
-	gap30_60 := gapPct(e1h[3], e1h[2])
-	if gap60_120 <= opt.MinGapPct || gap30_60 <= opt.MinGapPct {
+	strong, ok := MatchDir(*e15, *e4h, *e1h, b1h[len(b1h)-2], bull, opt)
+	if !ok {
 		return model.Result{}, false
 	}
 	k := b1h[len(b1h)-2]
-	if !wickEntry(k, e1h[2], bull, opt.WickNearPct) {
-		return model.Result{}, false
-	}
-
-	touch := wickTouches(k, e1h[2], bull)
-	strong := touch && gap60_120 > opt.StrongMinGapPct && gap30_60 > opt.StrongMinGapPct
+	gap60_120 := gapPct(e1h[4], e1h[3])
+	gap30_60 := gapPct(e1h[3], e1h[2])
+	gap5_10 := gapPct(e1h[0], e1h[1])
 
 	label := "多头"
 	if !bull {
@@ -128,7 +121,8 @@ func evalDir(stock model.Stock, b15, b1h, b4h []model.Kline, dir Direction, opt 
 	if strong {
 		tag = fmt.Sprintf("[多周期趋势·%s·强势]", label)
 	}
-	metric := fmt.Sprintf("1h gap60/120=%.2f%% gap30/60=%.2f%% strong=%v", gap60_120, gap30_60, strong)
+	metric := fmt.Sprintf("1h gap60/120=%.2f%% gap30/60=%.2f%% gap5/10=%.2f%% strong=%v",
+		gap60_120, gap30_60, gap5_10, strong)
 	return model.Result{
 		Code:   stock.Code,
 		Name:   stock.Name,
@@ -148,6 +142,32 @@ func evalDir(stock model.Stock, b15, b1h, b4h []model.Kline, dir Direction, opt 
 			Bars:   len(b1h),
 		},
 	}, true
+}
+
+// MatchDir 用已算好的三周期 EMA（len-2）与 1h 判定根 K 线判定是否命中；strong 表示原严格条件。
+// vals 顺序为 EMA5/10/30/60/120。供示例测试与 Eval 共用，避免规则漂移。
+func MatchDir(e15, e4h, e1h [5]float64, k model.Kline, bull bool, opt Options) (strong bool, ok bool) {
+	opt = normalizeOptions(opt)
+	if !hasAnchorArrangement(e15, bull) || !hasStrictStack(e4h, []int{0, 1, 2, 3, 4}, bull) {
+		return false, false
+	}
+	if !hasStrictStack(e1h, []int{1, 2, 3, 4}, bull) {
+		return false, false
+	}
+	if gapPct(e1h[0], e1h[1]) >= opt.MaxEMA5_10GapPct {
+		return false, false
+	}
+	gap60_120 := gapPct(e1h[4], e1h[3])
+	gap30_60 := gapPct(e1h[3], e1h[2])
+	if gap60_120 <= opt.MinGapPct || gap30_60 <= opt.MinGapPct {
+		return false, false
+	}
+	if !wickEntry(k, e1h[2], bull, opt.WickNearPct) {
+		return false, false
+	}
+	touch := wickTouches(k, e1h[2], bull)
+	strong = touch && gap60_120 > opt.StrongMinGapPct && gap30_60 > opt.StrongMinGapPct
+	return strong, true
 }
 
 // emasAt 返回 bars[idx] 处 EMA5/10/30/60/120。
@@ -179,6 +199,24 @@ func gapPct(a, b float64) float64 {
 	return diff / hi * 100
 }
 
+// hasStrictStack 判定 vals 在 idxs 上是否严格同向排列（多头递减、空头递增）。
+func hasStrictStack(vals [5]float64, idxs []int, bull bool) bool {
+	if len(idxs) < 2 {
+		return false
+	}
+	for j := 1; j < len(idxs); j++ {
+		prev, cur := vals[idxs[j-1]], vals[idxs[j]]
+		if bull {
+			if !(prev > cur) {
+				return false
+			}
+		} else if !(prev < cur) {
+			return false
+		}
+	}
+	return true
+}
+
 // hasAnchorArrangement 判定 vals[5,10,30,60,120] 是否存在长度 ≥3 的严格方向子序列，
 // 且必须包含 EMA60（下标 3）与 EMA120（下标 4）。
 func hasAnchorArrangement(vals [5]float64, bull bool) bool {
@@ -190,20 +228,7 @@ func hasAnchorArrangement(vals [5]float64, bull bool) bool {
 			}
 		}
 		idxs = append(idxs, 3, 4)
-		ok := true
-		for j := 1; j < len(idxs); j++ {
-			prev, cur := vals[idxs[j-1]], vals[idxs[j]]
-			if bull {
-				if !(prev > cur) {
-					ok = false
-					break
-				}
-			} else if !(prev < cur) {
-				ok = false
-				break
-			}
-		}
-		if ok {
+		if hasStrictStack(vals, idxs, bull) {
 			return true
 		}
 	}

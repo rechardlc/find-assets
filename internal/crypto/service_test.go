@@ -682,11 +682,16 @@ func TestRunTrendSkipsAssetMissingInterval(t *testing.T) {
 	}
 }
 
-// makeTrendBullBars 构造可通过 trend.Eval 多头判定的指数上涨序列，并强制 1h 影线。
+// makeTrendBullBars 构造可通过 trend.Eval 多头判定的序列（先涨后平，EMA5≈EMA10），并强制 1h 影线。
 func makeTrendBullBars(n int) []model.Kline {
 	out := make([]model.Kline, n)
 	start := time.Date(2026, 6, 17, 0, 0, 0, 0, time.UTC)
 	price := 100.0
+	flat := 20
+	if flat >= n {
+		flat = n / 4
+	}
+	rise := n - flat
 	for i := range out {
 		out[i] = model.Kline{
 			Date:   start.Add(time.Duration(i) * time.Hour),
@@ -696,7 +701,9 @@ func makeTrendBullBars(n int) []model.Kline {
 			Low:    price,
 			Volume: 1000,
 		}
-		price *= 1.01
+		if i < rise-1 {
+			price *= 1.01
+		}
 	}
 	closes := model.Closes(out)
 	e30 := indicator.EMA(closes, 30)
