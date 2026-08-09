@@ -49,6 +49,8 @@ type ScanJob struct {
 	BoxAmplitudePct float64
 	// BoxSidewaysOnly 为 true 时仅输出顶底同时命中的「窄幅横盘」；零值 false 保留仅底/仅顶（CLI 默认显式传 true）。
 	BoxSidewaysOnly bool
+	// TrendMinGapPct 覆盖多周期趋势 1h EMA 间距阈值（百分比）；<=0 时用策略默认值（1）。
+	TrendMinGapPct float64
 }
 
 func NewService(src Source) *Service {
@@ -148,15 +150,26 @@ func sortResults(strategy string, results []model.Result) {
 }
 
 func lessResult(strategy string, a, b *model.Result) bool {
-	if a.Alert != b.Alert {
-		return a.Alert
-	}
 	switch strategy {
 	case StrategyAmplitude:
+		if a.Alert != b.Alert {
+			return a.Alert
+		}
 		if a.Snapshot.Amplitude != b.Snapshot.Amplitude {
 			return a.Snapshot.Amplitude > b.Snapshot.Amplitude
 		}
+	case StrategyTrend:
+		ga, gb := trendGapScore(a.Snapshot), trendGapScore(b.Snapshot)
+		if ga != gb {
+			return ga > gb
+		}
+		if a.Alert != b.Alert {
+			return a.Alert
+		}
 	default:
+		if a.Alert != b.Alert {
+			return a.Alert
+		}
 		if a.Snapshot.Touches != b.Snapshot.Touches {
 			return a.Snapshot.Touches > b.Snapshot.Touches
 		}
@@ -165,6 +178,26 @@ func lessResult(strategy string, a, b *model.Result) bool {
 		return a.Code < b.Code
 	}
 	return a.Tag < b.Tag
+}
+
+// trendGapScore 用 1h EMA30/60/120 两段间距之和衡量趋势拉开程度。
+func trendGapScore(s model.Snapshot) float64 {
+	return trendGapPct(s.EMA120, s.EMA60) + trendGapPct(s.EMA60, s.EMA30)
+}
+
+func trendGapPct(a, b float64) float64 {
+	hi := a
+	if b > hi {
+		hi = b
+	}
+	if hi == 0 {
+		return 0
+	}
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff / hi * 100
 }
 
 func (s *Service) buildActiveStrategies(job ScanJob, strategies []string) ([]activeStrategy, error) {
@@ -366,6 +399,9 @@ func (s *Service) RunTrend(ctx context.Context, job ScanJob) (*exporter.Report, 
 		job.Workers = 10
 	}
 	opt := trend.DefaultOptions()
+	if job.TrendMinGapPct > 0 {
+		opt.MinGapPct = job.TrendMinGapPct
+	}
 	minBars := trend.MinRequiredBars(opt)
 	if job.BarsLimit < minBars {
 		return nil, nil

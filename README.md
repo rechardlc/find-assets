@@ -212,6 +212,7 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-box-amplitude` | 5 | 箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低，滤掉贴着均价的死水横盘 |
 | `-box-sideways-only` | true | 箱体仅输出顶底同时命中的窄幅横盘；`false` 时保留仅底/仅顶 |
 | `-trend` | true | 多周期趋势（15m+1h+4h 联合；每 1h 收盘扫描）；`false` 关闭 |
+| `-trend-gap` | 1 | 多周期趋势 1h EMA 间距阈值（%）；近影线允许与 EMA30 差 <1%；原条件（间距>8% 且影线真实触及）标为强势 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
 | `-schedule` | true | 是否按周期持续扫描；单次扫描传 `-schedule=false` |

@@ -616,6 +616,32 @@ func TestRunTrendReport(t *testing.T) {
 	}
 }
 
+func TestSortResultsTrendByGapDesc(t *testing.T) {
+	results := []model.Result{
+		{Code: "AAA", Alert: true, Snapshot: model.Snapshot{EMA30: 110, EMA60: 100, EMA120: 95}},  // sum ≈ 14
+		{Code: "BBB", Alert: false, Snapshot: model.Snapshot{EMA30: 120, EMA60: 100, EMA120: 80}}, // sum ≈ 37
+		{Code: "CCC", Alert: false, Snapshot: model.Snapshot{EMA30: 110, EMA60: 100, EMA120: 95}}, // sum ≈ 14
+	}
+	sortResults(StrategyTrend, results)
+	if results[0].Code != "BBB" {
+		t.Fatalf("expected largest gap first, got %v", codesOf(results))
+	}
+	if results[1].Code != "AAA" || !results[1].Alert {
+		t.Fatalf("expected Alert before non-Alert when gap equal, got %v", codesOf(results))
+	}
+	if results[2].Code != "CCC" {
+		t.Fatalf("unexpected order: %v", codesOf(results))
+	}
+}
+
+func codesOf(results []model.Result) []string {
+	out := make([]string, len(results))
+	for i, r := range results {
+		out[i] = r.Code
+	}
+	return out
+}
+
 func TestRunTrendSkipsWhenBarsInsufficient(t *testing.T) {
 	src := fakeSource{assets: []Asset{{Symbol: "X"}}, klines: makeFlatKlines(300)}
 	rep, err := NewService(src).RunTrend(context.Background(), ScanJob{

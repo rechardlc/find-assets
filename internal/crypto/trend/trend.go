@@ -3,8 +3,9 @@
 // 判定规则：
 //   - 三周期一律取倒数第二根已收盘 K 线（len-2）；末根 len-1 为形成中 K 线，不参与判定
 //   - 15m、4h：EMA5/10/30/60/120 中存在长度 ≥3 的方向子序列，且必须包含 EMA60、EMA120
-//   - 1h：EMA30/60/120 严格方向排列，且相邻间距均 > MinGapPct（默认 8%）
-//   - 1h 影线确认：多头下影触及 EMA30（实体不穿、可贴边）；空头上影对称
+//   - 1h：EMA30/60/120 严格方向排列，且相邻间距均 > MinGapPct（默认 1%）
+//   - 1h 影线入场：真实触及 EMA30（实体不穿、可贴边），或最低/最高价与 EMA30 差距 < WickNearPct（默认 1%）
+//   - 强势：间距均 > StrongMinGapPct（默认 8%）且影线真实触及 EMA30 → Tag 含「强势」且 Alert=true
 package trend
 
 import (
@@ -15,8 +16,10 @@ import (
 )
 
 const (
-	DefaultMinGapPct = 8
-	DefaultMinBars   = 250
+	DefaultMinGapPct       = 1
+	DefaultWickNearPct     = 1
+	DefaultStrongMinGapPct = 8
+	DefaultMinBars         = 250
 )
 
 // Direction 趋势方向。
@@ -29,13 +32,20 @@ const (
 
 // Options 多周期趋势参数。
 type Options struct {
-	MinBars   int     // 每周期最少 K 线根数（须含 EMA120），默认 250
-	MinGapPct float64 // 1h EMA 间距阈值（百分比），默认 8
+	MinBars         int     // 每周期最少 K 线根数（须含 EMA120），默认 250
+	MinGapPct       float64 // 1h EMA 间距阈值（百分比），默认 1
+	WickNearPct     float64 // 1h 近影线允许差距（百分比），默认 1
+	StrongMinGapPct float64 // 强势间距阈值（百分比），默认 8
 }
 
 // DefaultOptions 返回默认参数。
 func DefaultOptions() Options {
-	return Options{MinBars: DefaultMinBars, MinGapPct: DefaultMinGapPct}
+	return Options{
+		MinBars:         DefaultMinBars,
+		MinGapPct:       DefaultMinGapPct,
+		WickNearPct:     DefaultWickNearPct,
+		StrongMinGapPct: DefaultStrongMinGapPct,
+	}
 }
 
 // MinRequiredBars 返回参与判定所需的最少 K 线根数。
@@ -48,12 +58,7 @@ func MinRequiredBars(opt Options) int {
 
 // Eval 联合判定 15m/1h/4h；多头优先，至多命中一侧。
 func Eval(stock model.Stock, bars15m, bars1h, bars4h []model.Kline, opt Options) (model.Result, bool) {
-	if opt.MinBars <= 0 {
-		opt.MinBars = DefaultMinBars
-	}
-	if opt.MinGapPct <= 0 {
-		opt.MinGapPct = DefaultMinGapPct
-	}
+	opt = normalizeOptions(opt)
 	minN := opt.MinBars
 	if len(bars15m) < minN || len(bars1h) < minN || len(bars4h) < minN {
 		return model.Result{}, false
@@ -65,6 +70,22 @@ func Eval(stock model.Stock, bars15m, bars1h, bars4h []model.Kline, opt Options)
 		}
 	}
 	return model.Result{}, false
+}
+
+func normalizeOptions(opt Options) Options {
+	if opt.MinBars <= 0 {
+		opt.MinBars = DefaultMinBars
+	}
+	if opt.MinGapPct <= 0 {
+		opt.MinGapPct = DefaultMinGapPct
+	}
+	if opt.WickNearPct <= 0 {
+		opt.WickNearPct = DefaultWickNearPct
+	}
+	if opt.StrongMinGapPct <= 0 {
+		opt.StrongMinGapPct = DefaultStrongMinGapPct
+	}
+	return opt
 }
 
 func evalDir(stock model.Stock, b15, b1h, b4h []model.Kline, dir Direction, opt Options) (model.Result, bool) {
@@ -86,26 +107,34 @@ func evalDir(stock model.Stock, b15, b1h, b4h []model.Kline, dir Direction, opt 
 	} else if !(e1h[2] < e1h[3] && e1h[3] < e1h[4]) {
 		return model.Result{}, false
 	}
-	if gapPct(e1h[4], e1h[3]) <= opt.MinGapPct || gapPct(e1h[3], e1h[2]) <= opt.MinGapPct {
+	gap60_120 := gapPct(e1h[4], e1h[3])
+	gap30_60 := gapPct(e1h[3], e1h[2])
+	if gap60_120 <= opt.MinGapPct || gap30_60 <= opt.MinGapPct {
 		return model.Result{}, false
 	}
 	k := b1h[len(b1h)-2]
-	if !wickTouches(k, e1h[2], bull) {
+	if !wickEntry(k, e1h[2], bull, opt.WickNearPct) {
 		return model.Result{}, false
 	}
+
+	touch := wickTouches(k, e1h[2], bull)
+	strong := touch && gap60_120 > opt.StrongMinGapPct && gap30_60 > opt.StrongMinGapPct
 
 	label := "多头"
 	if !bull {
 		label = "空头"
 	}
 	tag := fmt.Sprintf("[多周期趋势·%s]", label)
-	metric := fmt.Sprintf("1h gap60/120=%.2f%% gap30/60=%.2f%%",
-		gapPct(e1h[4], e1h[3]), gapPct(e1h[3], e1h[2]))
+	if strong {
+		tag = fmt.Sprintf("[多周期趋势·%s·强势]", label)
+	}
+	metric := fmt.Sprintf("1h gap60/120=%.2f%% gap30/60=%.2f%% strong=%v", gap60_120, gap30_60, strong)
 	return model.Result{
 		Code:   stock.Code,
 		Name:   stock.Name,
 		Tag:    tag,
 		Metric: metric,
+		Alert:  strong,
 		Snapshot: model.Snapshot{
 			Date:   k.Date.Format("2006-01-02 15:04"),
 			Close:  k.Close,
@@ -191,4 +220,25 @@ func wickTouches(k model.Kline, ema30 float64, bull bool) bool {
 		return k.Low <= ema30 && ema30 <= bodyLo
 	}
 	return bodyHi <= ema30 && ema30 <= k.High
+}
+
+// wickEntry 1h 入场：真实触及，或极值与 EMA30 差距 < nearPct 且实体不穿（可贴边）。
+func wickEntry(k model.Kline, ema30 float64, bull bool, nearPct float64) bool {
+	if wickTouches(k, ema30, bull) {
+		return true
+	}
+	bodyLo, bodyHi := k.Open, k.Close
+	if bodyLo > bodyHi {
+		bodyLo, bodyHi = bodyHi, bodyLo
+	}
+	if bull {
+		if ema30 > bodyLo {
+			return false
+		}
+		return gapPct(k.Low, ema30) < nearPct
+	}
+	if bodyHi > ema30 {
+		return false
+	}
+	return gapPct(k.High, ema30) < nearPct
 }

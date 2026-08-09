@@ -18,6 +18,7 @@ import (
 	"github.com/find-assets/scanner/internal/crypto/amplitude"
 	"github.com/find-assets/scanner/internal/crypto/box"
 	"github.com/find-assets/scanner/internal/crypto/reversal"
+	"github.com/find-assets/scanner/internal/crypto/trend"
 	"github.com/find-assets/scanner/internal/exporter"
 	"github.com/find-assets/scanner/internal/notify"
 	stocksource "github.com/find-assets/scanner/internal/source"
@@ -39,6 +40,7 @@ type config struct {
 	boxAmplitudePct    float64
 	boxSidewaysOnly    bool
 	trend              bool
+	trendGapPct        float64
 	bars               int
 	workers            int
 	schedule           bool
@@ -178,9 +180,10 @@ func main() {
 			return
 		}
 		rep, err := svc.RunTrend(ctx, crypto.ScanJob{
-			BarsLimit: cfg.bars,
-			Workers:   cfg.workers,
-			Assets:    assets,
+			BarsLimit:      cfg.bars,
+			Workers:        cfg.workers,
+			Assets:         assets,
+			TrendMinGapPct: cfg.trendGapPct,
 		})
 		if err != nil {
 			log.Printf("[trend] 扫描失败: %v", err)
@@ -293,6 +296,7 @@ func parseConfig(args []string) (config, error) {
 	fs.Float64Var(&cfg.boxAmplitudePct, "box-amplitude", box.DefaultMinAmpPct, "箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低 需达到该值")
 	fs.BoolVar(&cfg.boxSidewaysOnly, "box-sideways-only", true, "箱体仅输出顶底同时命中的窄幅横盘；false 时保留仅底/仅顶")
 	fs.BoolVar(&cfg.trend, "trend", true, "启用多周期趋势策略（15m+1h+4h 联合；每 1h 收盘扫描）")
+	fs.Float64Var(&cfg.trendGapPct, "trend-gap", trend.DefaultMinGapPct, "多周期趋势 1h EMA 间距阈值（百分比），默认 1；强势仍要求 >8% 且影线真实触及")
 	// 其他配置
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
@@ -353,6 +357,9 @@ func parseConfig(args []string) (config, error) {
 	}
 	if cfg.boxAmplitudePct <= 0 {
 		return config{}, fmt.Errorf("-box-amplitude 必须大于 0，当前为 %g", cfg.boxAmplitudePct)
+	}
+	if cfg.trendGapPct <= 0 {
+		return config{}, fmt.Errorf("-trend-gap 必须大于 0，当前为 %g", cfg.trendGapPct)
 	}
 	if cfg.boxTouches < box.DefaultTouches {
 		return config{}, fmt.Errorf("-box-touches 至少为 %d，当前为 %d", box.DefaultTouches, cfg.boxTouches)

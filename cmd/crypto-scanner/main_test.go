@@ -56,6 +56,9 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if !cfg.trend {
 		t.Fatal("expected -trend default true")
 	}
+	if cfg.trendGapPct != 1 {
+		t.Fatalf("expected -trend-gap default 1, got %g", cfg.trendGapPct)
+	}
 }
 
 func TestParseConfigTrendDisable(t *testing.T) {
@@ -67,6 +70,21 @@ func TestParseConfigTrendDisable(t *testing.T) {
 	}
 	if cfg.trend {
 		t.Fatal("expected trend disabled")
+	}
+}
+
+func TestParseConfigTrendGap(t *testing.T) {
+	t.Setenv("FIND_ASSETS_SMTP_PASS", "")
+
+	cfg, err := parseConfig([]string{"-trend-gap", "2.5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.trendGapPct != 2.5 {
+		t.Fatalf("trendGapPct=%g", cfg.trendGapPct)
+	}
+	if _, err := parseConfig([]string{"-trend-gap", "0"}); err == nil {
+		t.Fatal("expected error for -trend-gap=0")
 	}
 }
 
