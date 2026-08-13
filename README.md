@@ -40,7 +40,7 @@
 | 拐点 `reversal`（超跌 + 超涨） | `15m,1h,4h` | `internal/crypto/reversal` |
 | 一箭穿心 `pierce`（上穿 + 下穿） | `1h,4h` | `internal/crypto/pierce` |
 | 振幅异动 `amplitude`（情绪涨 + 情绪跌） | `4h` | `internal/crypto/amplitude` |
-| 箱体震荡 `box`（底部 + 顶部箱体） | `1h,4h` | `internal/crypto/box` |
+| 箱体震荡 `box`（底部 + 顶部箱体） | `4h` | `internal/crypto/box` |
 | 多周期趋势 `trend`（多头 + 空头） | 固定 15m+1h+4h（每 1h 收盘） | `internal/crypto/trend` |
 
 - OKX 单一数据源，`hot_alt` 热门山寨合约池（排除 BTC/ETH/稳定币）
@@ -201,18 +201,18 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-pool` | hot_alt | 合约池规则，当前支持热门山寨综合评分 |
 | `-top` | 200 | 每日缓存的候选合约数量 |
 | `-intervals` | 15m,1h,4h | 拐点策略 K 线周期列表 |
-| `-pierce-intervals` | 4h | 一箭穿心策略 K 线周期列表；留空关闭 |
+| `-pierce-intervals` | 1h,4h | 一箭穿心策略 K 线周期列表；留空关闭 |
 | `-amplitude-intervals` | 4h | 振幅异动策略 K 线周期列表，可多周期；留空关闭 |
 | `-amplitude` | 9 | 振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/开盘 |
-| `-box-intervals` | 1h,4h | 箱体震荡策略 K 线周期列表，可多周期；留空关闭 |
+| `-box-intervals` | 4h | 箱体震荡策略 K 线周期列表，可多周期；留空关闭 |
 | `-box-pct` | 0.6 | 箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度 |
 | `-box-lookback` | 24 | 箱体震荡回看的已收盘 K 线根数 |
 | `-box-touches` | 3 | 箱体最少触及次数：几根 K 线踩在同一价位才算箱体 |
 | `-box-min-gap` | 6 | 首末两次触及之间的中间 K 线最少根数，滤掉连续几根挤在一起的伪箱体 |
 | `-box-amplitude` | 5 | 箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低，滤掉贴着均价的死水横盘 |
-| `-box-sideways-only` | true | 箱体仅输出顶底同时命中的窄幅横盘；`false` 时保留仅底/仅顶 |
+| `-box-sideways-only` | false | 为 true 时仅输出顶底同时命中的窄幅横盘；默认保留仅底/仅顶 |
 | `-trend` | true | 多周期趋势（15m+1h+4h 联合；每 1h 收盘扫描）；`false` 关闭 |
-| `-trend-gap` | 1 | 多周期趋势 1h EMA 间距阈值（%）；近影线允许与 EMA30 差 <1%；原条件（间距>8% 且影线真实触及）标为强势 |
+| `-trend-gap` | 1 | 多周期趋势 1h EMA 间距阈值（%）；影线须与 EMA30 交叉或相等；间距>8% 标为强势 |
 | `-bars` | 300 | 每个合约拉取的 K 线数量 |
 | `-workers` | 10 | 最大并发数 |
 | `-schedule` | true | 是否按周期持续扫描；单次扫描传 `-schedule=false` |

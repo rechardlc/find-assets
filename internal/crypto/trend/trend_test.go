@@ -78,30 +78,17 @@ func TestWickTouchesBear(t *testing.T) {
 	}
 }
 
-func TestWickEntryNearBull(t *testing.T) {
-	ema30 := 100.0
-	k := model.Kline{Open: 102, Close: 103, High: 104, Low: 100.5}
-	if !wickEntry(k, ema30, true, 1) {
-		t.Fatal("expected near wick entry")
-	}
-	if wickTouches(k, ema30, true) {
-		t.Fatal("near case should not count as real touch")
-	}
-	kFar := model.Kline{Open: 104, Close: 105, High: 106, Low: 102.5}
-	if wickEntry(kFar, ema30, true, 1) {
-		t.Fatal("expected miss when Low is >1% above EMA30")
+func TestWickTouchesEqualLowBull(t *testing.T) {
+	k := model.Kline{Open: 102, Close: 103, High: 104, Low: 100}
+	if !wickTouches(k, 100, true) {
+		t.Fatal("expected hit when Low equals EMA30")
 	}
 }
 
-func TestWickEntryNearBear(t *testing.T) {
-	ema30 := 100.0
-	k := model.Kline{Open: 97, Close: 96, High: 99.5, Low: 95}
-	if !wickEntry(k, ema30, false, 1) {
-		t.Fatal("expected near upper wick entry")
-	}
-	kFar := model.Kline{Open: 95, Close: 94, High: 97.5, Low: 93}
-	if wickEntry(kFar, ema30, false, 1) {
-		t.Fatal("expected miss when High is >1% below EMA30")
+func TestWickTouchesEqualHighBear(t *testing.T) {
+	k := model.Kline{Open: 97, Close: 96, High: 100, Low: 95}
+	if !wickTouches(k, 100, false) {
+		t.Fatal("expected hit when High equals EMA30")
 	}
 }
 
@@ -128,23 +115,13 @@ func TestEvalBullStrongHit(t *testing.T) {
 	}
 }
 
-func TestEvalBullNearWickNormalHit(t *testing.T) {
+func TestEvalBullNearWickMiss(t *testing.T) {
 	bars15 := riseThenFlatBars(300, 100, 1.01, 20)
 	bars1h := riseThenFlatBars(300, 100, 1.01, 20)
 	bars4h := riseThenFlatBars(300, 100, 1.01, 20)
 	forceNearWickBull(bars1h)
-	r, ok := Eval(model.Stock{Code: "BTCUSDT", Name: "BTC"}, bars15, bars1h, bars4h, DefaultOptions())
-	if !ok {
-		t.Fatal("expected bull hit with near wick")
-	}
-	if strings.Contains(r.Tag, "强势") {
-		t.Fatalf("near wick should not be strong, tag=%q", r.Tag)
-	}
-	if r.Alert {
-		t.Fatal("expected Alert=false for near-only")
-	}
-	if !strings.Contains(r.Tag, "多头") {
-		t.Fatalf("tag=%q", r.Tag)
+	if _, ok := Eval(model.Stock{Code: "BTCUSDT", Name: "BTC"}, bars15, bars1h, bars4h, DefaultOptions()); ok {
+		t.Fatal("expected miss when lower wick does not reach EMA30")
 	}
 }
 
@@ -197,7 +174,7 @@ func TestEvalInsufficientBars(t *testing.T) {
 
 func TestDefaultOptionsGap(t *testing.T) {
 	opt := DefaultOptions()
-	if opt.MinGapPct != 1 || opt.WickNearPct != 1 || opt.StrongMinGapPct != 8 || opt.MaxEMA5_10GapPct != 0.5 {
+	if opt.MinGapPct != 1 || opt.StrongMinGapPct != 8 || opt.MaxEMA5_10GapPct != 0.5 {
 		t.Fatalf("unexpected defaults: %+v", opt)
 	}
 }

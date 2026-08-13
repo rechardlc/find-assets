@@ -119,6 +119,18 @@ func TestEvalWrongArrangementMiss(t *testing.T) {
 	}
 }
 
+func TestGlueThreshold(t *testing.T) {
+	if got := glueThreshold("1h"); got != DefaultGluePct {
+		t.Fatalf("1h glue = %g, want %g", got, DefaultGluePct)
+	}
+	if got := glueThreshold("4h"); got != DefaultGluePct {
+		t.Fatalf("4h glue = %g, want %g", got, DefaultGluePct)
+	}
+	if got := glueThreshold("15m"); got != 0 {
+		t.Fatalf("15m glue = %g, want 0 (no filter)", got)
+	}
+}
+
 func TestEvalGlueSkips(t *testing.T) {
 	bars := flatBars(300, 100)                     // 均线完全重合 → 极度粘合
 	setSignal(bars, 95, 115, 90, 110, 2000, 1000)  // 实体虽跨全部均线，但粘合应放弃

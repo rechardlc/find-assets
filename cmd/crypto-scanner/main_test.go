@@ -50,7 +50,7 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if cfg.customFile != defaultCustomFile {
 		t.Fatalf("unexpected custom file default: %q", cfg.customFile)
 	}
-	if len(cfg.pierceIntervals) != 1 || cfg.pierceIntervals[0].Name != "4h" {
+	if len(cfg.pierceIntervals) != 2 || cfg.pierceIntervals[0].Name != "1h" || cfg.pierceIntervals[1].Name != "4h" {
 		t.Fatalf("unexpected pierce intervals default: %+v", cfg.pierceIntervals)
 	}
 	if !cfg.trend {
@@ -157,7 +157,7 @@ func TestParseConfigBoxDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.boxIntervals) != 2 || cfg.boxIntervals[0].Name != "1h" || cfg.boxIntervals[1].Name != "4h" {
+	if len(cfg.boxIntervals) != 1 || cfg.boxIntervals[0].Name != "4h" {
 		t.Fatalf("unexpected box intervals default: %+v", cfg.boxIntervals)
 	}
 	if cfg.boxPct != 0.6 || cfg.boxLookback != 24 || cfg.boxTouches != 3 || cfg.boxMinGap != 6 {
@@ -167,8 +167,8 @@ func TestParseConfigBoxDefaults(t *testing.T) {
 	if cfg.boxAmplitudePct != 5 {
 		t.Fatalf("unexpected box amplitude default: %v", cfg.boxAmplitudePct)
 	}
-	if !cfg.boxSidewaysOnly {
-		t.Fatal("expected -box-sideways-only default true")
+	if cfg.boxSidewaysOnly {
+		t.Fatal("expected -box-sideways-only default false")
 	}
 }
 

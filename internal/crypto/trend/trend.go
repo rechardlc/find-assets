@@ -6,8 +6,8 @@
 //   - 4h：EMA5/10/30/60/120 严格全排列（多头快线在上，空头对称）
 //   - 1h：EMA10/30/60/120 严格方向排列；EMA5 与 EMA10 间距 < MaxEMA5_10GapPct（默认 0.5%）
 //   - 1h：EMA30/60/120 相邻间距均 > MinGapPct（默认 1%）
-//   - 1h 影线入场：真实触及 EMA30（实体不穿、可贴边），或最低/最高价与 EMA30 差距 < WickNearPct（默认 1%）
-//   - 强势：间距均 > StrongMinGapPct（默认 8%）且影线真实触及 EMA30 → Tag 含「强势」且 Alert=true
+//   - 1h 影线入场：影线与 EMA30 交叉或相等（实体不穿、可贴边）
+//   - 强势：间距均 > StrongMinGapPct（默认 8%）→ Tag 含「强势」且 Alert=true
 package trend
 
 import (
@@ -18,11 +18,10 @@ import (
 )
 
 const (
-	DefaultMinGapPct         = 1
-	DefaultWickNearPct       = 1
-	DefaultStrongMinGapPct   = 8
-	DefaultMaxEMA5_10GapPct  = 0.5
-	DefaultMinBars           = 250
+	DefaultMinGapPct        = 1
+	DefaultStrongMinGapPct  = 8
+	DefaultMaxEMA5_10GapPct = 0.5
+	DefaultMinBars          = 250
 )
 
 // Direction 趋势方向。
@@ -37,7 +36,6 @@ const (
 type Options struct {
 	MinBars          int     // 每周期最少 K 线根数（须含 EMA120），默认 250
 	MinGapPct        float64 // 1h EMA30/60/120 间距阈值（百分比），默认 1
-	WickNearPct      float64 // 1h 近影线允许差距（百分比），默认 1
 	StrongMinGapPct  float64 // 强势间距阈值（百分比），默认 8
 	MaxEMA5_10GapPct float64 // 1h EMA5 与 EMA10 最大间距（百分比），默认 0.5
 }
@@ -47,7 +45,6 @@ func DefaultOptions() Options {
 	return Options{
 		MinBars:          DefaultMinBars,
 		MinGapPct:        DefaultMinGapPct,
-		WickNearPct:      DefaultWickNearPct,
 		StrongMinGapPct:  DefaultStrongMinGapPct,
 		MaxEMA5_10GapPct: DefaultMaxEMA5_10GapPct,
 	}
@@ -83,9 +80,6 @@ func normalizeOptions(opt Options) Options {
 	}
 	if opt.MinGapPct <= 0 {
 		opt.MinGapPct = DefaultMinGapPct
-	}
-	if opt.WickNearPct <= 0 {
-		opt.WickNearPct = DefaultWickNearPct
 	}
 	if opt.StrongMinGapPct <= 0 {
 		opt.StrongMinGapPct = DefaultStrongMinGapPct
@@ -162,11 +156,10 @@ func MatchDir(e15, e4h, e1h [5]float64, k model.Kline, bull bool, opt Options) (
 	if gap60_120 <= opt.MinGapPct || gap30_60 <= opt.MinGapPct {
 		return false, false
 	}
-	if !wickEntry(k, e1h[2], bull, opt.WickNearPct) {
+	if !wickTouches(k, e1h[2], bull) {
 		return false, false
 	}
-	touch := wickTouches(k, e1h[2], bull)
-	strong = touch && gap60_120 > opt.StrongMinGapPct && gap30_60 > opt.StrongMinGapPct
+	strong = gap60_120 > opt.StrongMinGapPct && gap30_60 > opt.StrongMinGapPct
 	return strong, true
 }
 
@@ -235,7 +228,7 @@ func hasAnchorArrangement(vals [5]float64, bull bool) bool {
 	return false
 }
 
-// wickTouches 判定影线触及 ema30：多头下影、空头上影；实体不穿、可贴边。
+// wickTouches 判定影线与 ema30 交叉或相等：多头下影、空头上影；实体不穿、可贴边。
 func wickTouches(k model.Kline, ema30 float64, bull bool) bool {
 	bodyLo, bodyHi := k.Open, k.Close
 	if bodyLo > bodyHi {
@@ -245,25 +238,4 @@ func wickTouches(k model.Kline, ema30 float64, bull bool) bool {
 		return k.Low <= ema30 && ema30 <= bodyLo
 	}
 	return bodyHi <= ema30 && ema30 <= k.High
-}
-
-// wickEntry 1h 入场：真实触及，或极值与 EMA30 差距 < nearPct 且实体不穿（可贴边）。
-func wickEntry(k model.Kline, ema30 float64, bull bool, nearPct float64) bool {
-	if wickTouches(k, ema30, bull) {
-		return true
-	}
-	bodyLo, bodyHi := k.Open, k.Close
-	if bodyLo > bodyHi {
-		bodyLo, bodyHi = bodyHi, bodyLo
-	}
-	if bull {
-		if ema30 > bodyLo {
-			return false
-		}
-		return gapPct(k.Low, ema30) < nearPct
-	}
-	if bodyHi > ema30 {
-		return false
-	}
-	return gapPct(k.High, ema30) < nearPct
 }

@@ -20,10 +20,16 @@ import (
   1h K: O=146 C=147 H=148 L=128 → Low≤EMA30≤实体（真实触及）
   期望: hit + strong
 
-示例 B · 多头普通（近影线，非强势）
+示例 B · 多头 miss · 下影未触及 EMA30
   同 A 的 15m/4h/1h EMA，但 1h K: O=146 C=147 H=148 L=130.5
-       - Low=130.5 > EMA30=130，gap≈0.38% < 1%（近影线）
-       - 未真实触及 → 非强势
+       - Low=130.5 > EMA30=130，影线未交叉、未相等
+  期望: miss
+
+示例 B2 · 多头普通（真实触及，间距未达强势）
+  1h: 144.2, 144.0, 130, 127, 124
+       - gap(5,10)=0.14% < 0.5%
+       - gap(60,120)≈2.36%、gap(30,60)≈2.31%，均 >1% 且 ≤8%
+  1h K: O=146 C=147 H=148 L=128 → Low≤EMA30≤实体
   期望: hit，strong=false
 
 示例 C · 多头 miss · EMA5/10 间距过大
@@ -70,11 +76,19 @@ func TestStrategyExamples(t *testing.T) {
 			bull: true, wantOK: true, wantStrong: true,
 		},
 		{
-			name: "B_多头近影线普通",
+			name: "B_多头近影线miss",
 			e15:  [5]float64{148, 146, 142, 138, 125},
 			e4h:  [5]float64{145, 143, 140, 132, 118},
 			e1h:  [5]float64{144.2, 144.0, 130, 118, 105},
 			k:    model.Kline{Date: time.Date(2026, 8, 9, 15, 0, 0, 0, time.UTC), Open: 146, High: 148, Low: 130.5, Close: 147},
+			bull: true, wantOK: false,
+		},
+		{
+			name: "B2_多头普通真实触及",
+			e15:  [5]float64{148, 146, 142, 138, 125},
+			e4h:  [5]float64{145, 143, 140, 132, 118},
+			e1h:  [5]float64{144.2, 144.0, 130, 127, 124},
+			k:    model.Kline{Date: time.Date(2026, 8, 9, 15, 0, 0, 0, time.UTC), Open: 146, High: 148, Low: 128, Close: 147},
 			bull: true, wantOK: true, wantStrong: false,
 		},
 		{
@@ -121,7 +135,7 @@ func TestStrategyExamples(t *testing.T) {
 				t.Fatalf("strong=%v want %v", strong, tc.wantStrong)
 			}
 			// 校验示例自身数值满足文档声明的关键中间量
-			if tc.name == "A_多头强势" || tc.name == "B_多头近影线普通" {
+			if tc.name == "A_多头强势" {
 				if g := gapPct(tc.e1h[0], tc.e1h[1]); g >= 0.5 {
 					t.Fatalf("example gap5/10=%.3f should be <0.5", g)
 				}
@@ -155,12 +169,8 @@ func TestStrategyExamples_EvalRoundTrip(t *testing.T) {
 	t.Run("构造多头近影线_对齐示例B语义", func(t *testing.T) {
 		bars := riseThenFlatBars(300, 100, 1.01, 20)
 		forceNearWickBull(bars)
-		r, ok := Eval(model.Stock{Code: "EX-B"}, bars, bars, bars, DefaultOptions())
-		if !ok {
-			t.Fatal("expected Eval hit for near wick")
-		}
-		if r.Alert || r.Tag != "[多周期趋势·多头]" {
-			t.Fatalf("got tag=%q alert=%v", r.Tag, r.Alert)
+		if _, ok := Eval(model.Stock{Code: "EX-B"}, bars, bars, bars, DefaultOptions()); ok {
+			t.Fatal("expected Eval miss when wick does not reach EMA30")
 		}
 	})
 	t.Run("构造空头强势_对齐示例F语义", func(t *testing.T) {

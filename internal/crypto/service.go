@@ -47,7 +47,7 @@ type ScanJob struct {
 	BoxMinGap int
 	// BoxAmplitudePct 覆盖箱体跨度内振幅下限（百分比）；<=0 时用策略默认值。
 	BoxAmplitudePct float64
-	// BoxSidewaysOnly 为 true 时仅输出顶底同时命中的「窄幅横盘」；零值 false 保留仅底/仅顶（CLI 默认显式传 true）。
+	// BoxSidewaysOnly 为 true 时仅输出顶底同时命中的「窄幅横盘」；零值 false 保留仅底/仅顶（与 CLI 默认一致）。
 	BoxSidewaysOnly bool
 	// TrendMinGapPct 覆盖多周期趋势 1h EMA 间距阈值（百分比）；<=0 时用策略默认值（1）。
 	TrendMinGapPct float64

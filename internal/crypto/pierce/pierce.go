@@ -9,7 +9,7 @@
 //   - 上穿要求放量（当根成交量 > 前一根），下穿不要求
 //   - 方向匹配的均线排列过滤：以 len-1 为结尾的最近 5 根 K 线中至少 4 根，EMA5/10/30/60/120 任意 4 根呈方向排列
 //     （上穿需多头排列、下穿需空头排列）
-//   - 均线极度粘合（len-2 相邻均线间距全部低于阈值：1h < 0.1%、4h < 0.4%）时放弃
+//   - 均线极度粘合（len-2 相邻均线间距全部低于阈值：1h / 4h 均为 < 0.05%）时放弃
 //   - 强势标记（Alert）：穿满 5 根，或 穿 4 根且 EMA120 位于强势一侧
 //     （上穿 → EMA120 在实体下方；下穿 → EMA120 在实体上方）
 package pierce
@@ -35,6 +35,9 @@ type Options struct {
 	MinCross int    // 至少跨越几根均线，默认 4
 	Interval string // 周期标识，用于 Tag 与粘合阈值，例如 "1h"
 }
+
+// DefaultGluePct 1h / 4h 相邻均线粘合阈值（百分比）。
+const DefaultGluePct = 0.05
 
 func DefaultOptions(interval string) Options {
 	return Options{MinBars: 250, MinCross: 4, Interval: interval}
@@ -188,13 +191,11 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	}, true
 }
 
-// glueThreshold 返回相邻均线粘合的百分比阈值：1h 0.1%、4h 0.4%，其余不做粘合过滤（返回 0）。
+// glueThreshold 返回相邻均线粘合的百分比阈值：1h / 4h 均为 0.05%，其余不做粘合过滤（返回 0）。
 func glueThreshold(interval string) float64 {
 	switch interval {
-	case "1h":
-		return 0.1
-	case "4h":
-		return 0.4
+	case "1h", "4h":
+		return DefaultGluePct
 	default:
 		return 0
 	}

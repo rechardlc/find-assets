@@ -283,20 +283,21 @@ func parseConfig(args []string) (config, error) {
 	// 拐点策略
 	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "拐点策略 K 线周期列表，逗号分隔：15m,1h,4h")
 	// 一箭穿心策略
-	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "4h", "一箭穿心策略 K 线周期列表，1h,4h逗号分隔；留空则关闭一箭穿心")
+	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "1h,4h", "一箭穿心策略 K 线周期列表，1h,4h逗号分隔；留空则关闭一箭穿心")
 	// 情绪振幅异动策略
 	fs.StringVar(&amplitudeIntervalsArg, "amplitude-intervals", "4h", "振幅异动策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭振幅异动")
 	fs.Float64Var(&cfg.amplitudePct, "amplitude", amplitude.DefaultMinPct, "振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/开盘 达到该值即命中")
 	// 箱体震荡策略
-	fs.StringVar(&boxIntervalsArg, "box-intervals", "1h,4h", "箱体震荡策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭箱体震荡")
+	fs.StringVar(&boxIntervalsArg, "box-intervals", "4h", "箱体震荡策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭箱体震荡")
 	fs.Float64Var(&cfg.boxPct, "box-pct", box.DefaultPct, "箱体带宽上限（百分比）：箱体内最高/最低价的最大相差幅度")
 	fs.IntVar(&cfg.boxLookback, "box-lookback", box.DefaultLookback, "箱体震荡回看的已收盘 K 线根数")
 	fs.IntVar(&cfg.boxTouches, "box-touches", box.DefaultTouches, "箱体震荡最少触及次数：几根 K 线踩在同一价位才算箱体")
 	fs.IntVar(&cfg.boxMinGap, "box-min-gap", box.DefaultMinGap, "箱体首末两次触及之间的中间 K 线最少根数；1 表示仅要求首末触及不相邻")
 	fs.Float64Var(&cfg.boxAmplitudePct, "box-amplitude", box.DefaultMinAmpPct, "箱体跨度内振幅下限（百分比）：跨度内 (最高-最低)/最低 需达到该值")
-	fs.BoolVar(&cfg.boxSidewaysOnly, "box-sideways-only", true, "箱体仅输出顶底同时命中的窄幅横盘；false 时保留仅底/仅顶")
+	fs.BoolVar(&cfg.boxSidewaysOnly, "box-sideways-only", false, "为 true 时仅输出顶底同时命中的窄幅横盘；默认 false 保留仅底/仅顶")
+	// 趋势策略
 	fs.BoolVar(&cfg.trend, "trend", true, "启用多周期趋势策略（15m+1h+4h 联合；每 1h 收盘扫描）")
-	fs.Float64Var(&cfg.trendGapPct, "trend-gap", trend.DefaultMinGapPct, "多周期趋势 1h EMA 间距阈值（百分比），默认 1；强势仍要求 >8% 且影线真实触及")
+	fs.Float64Var(&cfg.trendGapPct, "trend-gap", trend.DefaultMinGapPct, "多周期趋势 1h EMA 间距阈值（百分比），默认 1；影线须与 EMA30 交叉或相等；强势另要求间距 >8%")
 	// 其他配置
 	fs.IntVar(&cfg.bars, "bars", 300, "每个合约拉取的 K 线数量")
 	fs.IntVar(&cfg.workers, "workers", 10, "最大并发数")
