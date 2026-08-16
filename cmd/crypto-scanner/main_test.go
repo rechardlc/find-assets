@@ -50,7 +50,7 @@ func TestParseConfigDefaultsToScheduledHotAltReversal(t *testing.T) {
 	if cfg.customFile != defaultCustomFile {
 		t.Fatalf("unexpected custom file default: %q", cfg.customFile)
 	}
-	if len(cfg.pierceIntervals) != 2 || cfg.pierceIntervals[0].Name != "1h" || cfg.pierceIntervals[1].Name != "4h" {
+	if len(cfg.pierceIntervals) != 3 || cfg.pierceIntervals[0].Name != "15m" || cfg.pierceIntervals[1].Name != "1h" || cfg.pierceIntervals[2].Name != "4h" {
 		t.Fatalf("unexpected pierce intervals default: %+v", cfg.pierceIntervals)
 	}
 	if !cfg.trend {

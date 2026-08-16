@@ -283,7 +283,7 @@ func parseConfig(args []string) (config, error) {
 	// 拐点策略
 	fs.StringVar(&intervalsArg, "intervals", "15m,1h,4h", "拐点策略 K 线周期列表，逗号分隔：15m,1h,4h")
 	// 一箭穿心策略
-	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "1h,4h", "一箭穿心策略 K 线周期列表，1h,4h逗号分隔；留空则关闭一箭穿心")
+	fs.StringVar(&pierceIntervalsArg, "pierce-intervals", "15m,1h,4h", "一箭穿心策略 K 线周期列表，15m,1h,4h逗号分隔；留空则关闭一箭穿心")
 	// 情绪振幅异动策略
 	fs.StringVar(&amplitudeIntervalsArg, "amplitude-intervals", "4h", "振幅异动策略 K 线周期列表，逗号分隔：15m,1h,4h；留空则关闭振幅异动")
 	fs.Float64Var(&cfg.amplitudePct, "amplitude", amplitude.DefaultMinPct, "振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/开盘 达到该值即命中")

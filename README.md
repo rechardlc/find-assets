@@ -38,7 +38,7 @@
 | 策略 | 默认周期 | 模块 |
 |------|----------|------|
 | 拐点 `reversal`（超跌 + 超涨） | `15m,1h,4h` | `internal/crypto/reversal` |
-| 一箭穿心 `pierce`（上穿 + 下穿） | `1h,4h` | `internal/crypto/pierce` |
+| 一箭穿心 `pierce`（上穿 + 下穿） | `15m,1h,4h` | `internal/crypto/pierce` |
 | 振幅异动 `amplitude`（情绪涨 + 情绪跌） | `4h` | `internal/crypto/amplitude` |
 | 箱体震荡 `box`（底部 + 顶部箱体） | `4h` | `internal/crypto/box` |
 | 多周期趋势 `trend`（多头 + 空头） | 固定 15m+1h+4h（每 1h 收盘） | `internal/crypto/trend` |
@@ -201,7 +201,7 @@ CLI 自动维护可执行文件旁 `stocks/stocks_YYYYMMDD.json` 清单缓存。
 | `-pool` | hot_alt | 合约池规则，当前支持热门山寨综合评分 |
 | `-top` | 200 | 每日缓存的候选合约数量 |
 | `-intervals` | 15m,1h,4h | 拐点策略 K 线周期列表 |
-| `-pierce-intervals` | 1h,4h | 一箭穿心策略 K 线周期列表；留空关闭 |
+| `-pierce-intervals` | 15m,1h,4h | 一箭穿心策略 K 线周期列表；留空关闭 |
 | `-amplitude-intervals` | 4h | 振幅异动策略 K 线周期列表，可多周期；留空关闭 |
 | `-amplitude` | 9 | 振幅异动阈值（百分比）：上一根 K 线 (最高-最低)/开盘 |
 | `-box-intervals` | 4h | 箱体震荡策略 K 线周期列表，可多周期；留空关闭 |

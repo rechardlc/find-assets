@@ -1,15 +1,13 @@
 // Package pierce 实现数字货币专用的「一箭穿心」形态判定，与 A 股 internal/strategy 完全独立。
 //
 // 判定规则（仅作用于有 EMA120 的老币，新币直接舍弃）：
-//   - 穿心/粘合判定对象为**倒数第二根已收盘 K 线**（len-2）；序列末尾（len-1）为当前周期在形成中的 K 线
-//   - 排列判定对象为**最新根**（len-1）：先穿心、下一根仍维持方向排列才算命中
+//   - 判定对象为**倒数第二根已收盘 K 线**（len-2）；序列末尾（len-1）为当前周期在形成中的 K 线
 //   - 双向：上穿（阳线自下而上跨过均线）/ 下穿（阴线自上而下跨过均线）
 //   - 「实体跨越」：被穿的均线严格夹在开盘价与收盘价之间
-//   - 需穿 EMA5/10/30/60/120 中任意 4 根，不足 4 根放弃
+//   - 粘合为必要条件：EMA5/10/30/60/120 中存在一组 4 根，组内任意两两间距 < 周期阈值，
+//     且这 4 根都被实体穿过（15m=0.04%，1h=0.08%，4h=1%）
 //   - 上穿要求放量（当根成交量 > 前一根），下穿不要求
-//   - 方向匹配的均线排列过滤：以 len-1 为结尾的最近 5 根 K 线中至少 4 根，EMA5/10/30/60/120 任意 4 根呈方向排列
-//     （上穿需多头排列、下穿需空头排列）
-//   - 均线极度粘合（len-2 相邻均线间距全部低于阈值：1h / 4h 均为 < 0.05%）时放弃
+//   - 不做方向排列过滤
 //   - 强势标记（Alert）：穿满 5 根，或 穿 4 根且 EMA120 位于强势一侧
 //     （上穿 → EMA120 在实体下方；下穿 → EMA120 在实体上方）
 package pierce
@@ -36,8 +34,12 @@ type Options struct {
 	Interval string // 周期标识，用于 Tag 与粘合阈值，例如 "1h"
 }
 
-// DefaultGluePct 1h / 4h 相邻均线粘合阈值（百分比）。
-const DefaultGluePct = 0.05
+// 各周期 5 选 4 均线带宽上限（百分比）：组内 (max-min)/max * 100 须严格小于该值。
+const (
+	GluePct15m = 0.04
+	GluePct1h  = 0.08
+	GluePct4h  = 1.0
+)
 
 func DefaultOptions(interval string) Options {
 	return Options{MinBars: 250, MinCross: 4, Interval: interval}
@@ -51,7 +53,7 @@ func MinRequiredBars(opt Options) int {
 	return opt.MinBars
 }
 
-// Eval 判定一箭穿心：穿心/粘合在倒数第二根已收盘 K 线（len-2），排列在最新根（len-1）确认。
+// Eval 判定一箭穿心：穿心与粘合均在倒数第二根已收盘 K 线（len-2）。
 func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (model.Result, bool) {
 	if opt.MinBars <= 0 {
 		opt.MinBars = 250
@@ -73,11 +75,8 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	ema60 := indicator.EMA(closes, 60)
 	ema120 := indicator.EMA(closes, 120)
 
-	// 穿心判定取倒数第二根已收盘 K 线（len-2）；排列/粘合判定取最新根（len-1）。
 	last := n - 2
-	arrLast := n - 1
-	// 需要 last-1（前一根量能）与 arrLast-4（5 根排列窗口）。
-	if last-1 < 0 || arrLast-4 < 0 {
+	if last-1 < 0 {
 		return model.Result{}, false
 	}
 	k := bars[last]
@@ -100,7 +99,6 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 		return model.Result{}, false
 	}
 
-	// 统计被实体严格跨越的均线。
 	lines := [5]float64{ema5[last], ema10[last], ema30[last], ema60[last], ema120[last]}
 	crossed := 0
 	for _, v := range lines {
@@ -112,6 +110,11 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 		return model.Result{}, false
 	}
 
+	// 粘合必要条件：存在一组 4 根均线两两间距低于阈值，且这 4 根都被实体穿过。
+	if !hasGluedPiercedFour(lines, lo, hi, glueThreshold(opt.Interval)) {
+		return model.Result{}, false
+	}
+
 	// 上穿要求放量（当根成交量 > 前一根）；下穿不要求。
 	volInc := 0.0
 	if dir == Up {
@@ -119,24 +122,6 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 			return model.Result{}, false
 		}
 		volInc = (float64(k.Volume) - float64(prev.Volume)) / float64(prev.Volume) * 100
-	}
-
-	// 均线极度粘合过滤（在穿心根 len-2 上）：相邻均线间距全部低于阈值时视为粘合，放弃。
-	if glued(lines, glueThreshold(opt.Interval)) {
-		return model.Result{}, false
-	}
-
-	// 方向匹配的均线排列过滤：以最新根 len-1 为结尾的最近 5 根，至少 4 根呈方向排列。
-	bull := dir == Up
-	arranged := 0
-	for i := arrLast - 4; i <= arrLast; i++ {
-		vals := []float64{ema5[i], ema10[i], ema30[i], ema60[i], ema120[i]}
-		if hasArrangement(vals, bull) {
-			arranged++
-		}
-	}
-	if arranged < 4 {
-		return model.Result{}, false
 	}
 
 	// 强势标记：穿满 5 根，或穿 4 根且 EMA120 在强势一侧。
@@ -191,67 +176,56 @@ func Eval(stock model.Stock, bars []model.Kline, dir Direction, opt Options) (mo
 	}, true
 }
 
-// glueThreshold 返回相邻均线粘合的百分比阈值：1h / 4h 均为 0.05%，其余不做粘合过滤（返回 0）。
+// glueThreshold 返回 5 选 4 均线带宽上限（百分比）。未知周期返回 0（粘合条件无法满足）。
 func glueThreshold(interval string) float64 {
 	switch interval {
-	case "1h", "4h":
-		return DefaultGluePct
+	case "15m":
+		return GluePct15m
+	case "1h":
+		return GluePct1h
+	case "4h":
+		return GluePct4h
 	default:
 		return 0
 	}
 }
 
-// glued 判定五条均线是否极度粘合：相邻间距（EMA5-10/10-30/30-60/60-120）全部低于阈值。
-// 阈值 <= 0 时视为不过滤（始终返回 false）。
-func glued(lines [5]float64, threshold float64) bool {
+// hasGluedPiercedFour 判定是否存在一组 4 根均线：组内 (max-min)/max*100 < threshold，且均被 (lo, hi) 严格穿过。
+func hasGluedPiercedFour(lines [5]float64, lo, hi, threshold float64) bool {
 	if threshold <= 0 {
 		return false
 	}
-	for i := 0; i+1 < len(lines); i++ {
-		if gapPct(lines[i], lines[i+1]) >= threshold {
-			return false
-		}
-	}
-	return true
-}
-
-// hasArrangement 判定按快→慢排列的均线值中，是否存在任意 4 根呈严格方向排列。
-// bull=true 要求存在长度 >= 4 的严格递减子序列（多头：快线在上）；否则为递增（空头）。
-func hasArrangement(vals []float64, bull bool) bool {
-	n := len(vals)
-	best := 0
-	dp := make([]int, n)
-	for i := 0; i < n; i++ {
-		dp[i] = 1
-		for j := 0; j < i; j++ {
-			ordered := vals[j] > vals[i]
-			if !bull {
-				ordered = vals[j] < vals[i]
+	for skip := 0; skip < len(lines); skip++ {
+		minV, maxV := 0.0, 0.0
+		first := true
+		ok := true
+		for i, v := range lines {
+			if i == skip {
+				continue
 			}
-			if ordered && dp[j]+1 > dp[i] {
-				dp[i] = dp[j] + 1
+			if !(lo < v && v < hi) {
+				ok = false
+				break
+			}
+			if first {
+				minV, maxV, first = v, v, false
+				continue
+			}
+			if v < minV {
+				minV = v
+			}
+			if v > maxV {
+				maxV = v
 			}
 		}
-		if dp[i] > best {
-			best = dp[i]
+		if !ok || maxV <= 0 {
+			continue
+		}
+		if (maxV-minV)/maxV*100 < threshold {
+			return true
 		}
 	}
-	return best >= 4
-}
-
-func gapPct(a, b float64) float64 {
-	hi := a
-	if b > hi {
-		hi = b
-	}
-	if hi == 0 {
-		return 0
-	}
-	diff := a - b
-	if diff < 0 {
-		diff = -diff
-	}
-	return diff / hi * 100
+	return false
 }
 
 func intervalLabel(interval string) string {
